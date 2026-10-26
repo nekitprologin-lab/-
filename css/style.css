@@ -198,7 +198,7 @@ h2 { font-size: 22px; font-weight: 600; }
 .detail { position: relative; }
 .detail-banner { height: 440px; margin-top: calc(var(--nav-h) * -1); background: #080808 center 25% / cover; position: relative; animation: bannerin 1.4s var(--ease) both; }
 @keyframes bannerin { from { opacity: 0; transform: scale(1.04); } }
-.detail-banner::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, #000 4%, rgba(0, 0, 0, .55) 50%, rgba(0, 0, 0, .35)); }
+.detail-banner::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, #000 0%, rgba(0, 0, 0, .55) 50%, rgba(0, 0, 0, .35)); }
 .detail-body { display: grid; grid-template-columns: 250px 1fr; gap: 36px; margin-top: -180px; position: relative; z-index: 1; }
 .detail-body .cover { width: 100%; border-radius: 14px; aspect-ratio: 2 / 3; object-fit: cover; background: var(--s2); box-shadow: 0 0 0 1px var(--line-2), 0 24px 60px rgba(0, 0, 0, .8); }
 .detail h1 { font-size: clamp(28px, 4.4vw, 52px); font-weight: 700; letter-spacing: -.04em; text-wrap: balance; }
