@@ -371,8 +371,18 @@
     </div>`;
 
     // сезоны: показываем только если у франшизы больше одного сериала (фильмам и одиночным тайтлам — ничего)
+    const famP = ["TV", "TV_SHORT", "ONA"].includes(m.format) ? Api.seasons(m.id).catch(() => []) : Promise.resolve([]);
+    // статус («Просмотрено», «Брошено»…) относится ко всему произведению, а не к одному сезону:
+    // если у этого сезона статуса нет, берём тот, что уже стоит у соседних сезонов
+    famP.then((list) => {
+      if (!Store.user || !list.length || (Store.get(m.id) || {}).status) return;
+      const sib = list.filter((n) => n.id !== m.id).map((n) => Store.get(n.id)).filter((r) => r && r.status)
+        .sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1))[0];
+      const sel = $("#statusSel");
+      if (sib && sel && !sel.value) { sel.value = sib.status; Store.save(m, { status: sib.status }).catch(() => {}); }
+    });
     if (["TV", "TV_SHORT", "ONA"].includes(m.format)) {
-      Api.seasons(m.id).then((list) => {
+      famP.then((list) => {
         const box = $("#seasons");
         if (!box || !list.length) return;
         const labels = seasonLabels(list);
@@ -412,8 +422,13 @@
     };
     $("#statusSel").onchange = async (e) => {
       if (!Store.user) { e.target.value = ""; return needLogin(); }
-      await Store.save(m, { status: e.target.value || null }).catch((err) => toast(err.message));
+      const st = e.target.value || null;
+      await Store.save(m, { status: st }).catch((err) => toast(err.message));
       toast("Сохранено");
+      // тот же статус для всех остальных сезонов этого произведения
+      const fam = await famP;
+      fam.filter((n) => n.id !== m.id && !(st === "completed" && n.status === "NOT_YET_RELEASED"))
+        .forEach((n) => Store.save(n, { status: st }).catch(() => {}));
     };
   }
 
