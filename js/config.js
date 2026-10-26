@@ -20,15 +20,22 @@ window.APP_CONFIG = {
   LIBRIA_MAP: {},
 
   // Источник 2 (резерв): ссылка на плеер ищется через Kodik REST API по номеру Shikimori (= номеру MyAnimeList).
-  // host: Kodik отдаёт ссылки на домен kodik.info, который у многих провайдеров закрыт, поэтому домен подменяется
-  // (можно поставить "https://kodik.biz/"). token: токен API (публичный, лежит в открытом коде сайта).
+  // Провайдер может закрывать kodikapi.com для прямых запросов, поэтому запрос идёт через публичные CORS-прокси
+  // (по очереди, пока один не ответит). {url} заменяется на адрес запроса к Kodik. Прокси видит только номер аниме
+  // и публичный токен. Если свой прокси появится, впиши его первым.
+  // host: Kodik отдаёт ссылки на домен kodik.info, он у многих закрыт, поэтому домен подменяется (aniqit.com, kodik.cc, kodik.biz).
+  // token: токен API (публичный, лежит в открытом коде сайта).
   // sandbox: права рамки; если плеер уходит в чёрный экран, поставь "" (рамка без ограничений).
   RESERVE: {
     enabled: true,
     api: "https://kodikapi.com/search",
     token: "8f828a2a87a8b139c2794ebf32b842de",
-    host: "https://kodik.cc/",
+    proxies: [
+      "https://api.allorigins.win/raw?url={url}",
+      "https://corsproxy.io/?{url}",
+    ],
+    host: "https://aniqit.com/",
     sandbox: "allow-scripts allow-same-origin allow-forms allow-presentation",
-    timeoutMs: 8000,
+    timeoutMs: 8000, // на каждый прокси
   },
 };

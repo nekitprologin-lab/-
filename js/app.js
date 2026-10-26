@@ -352,29 +352,42 @@
     getKodikLink.why = "";
     if (!R.enabled || !R.api || !R.token || !shikimoriId) return why("резерв выключен или нет номера аниме");
     if (!fresh && kodikCache.has(shikimoriId)) return kodikCache.get(shikimoriId);
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), R.timeoutMs || 8000);
+    const targetUrl = `${R.api}?token=${encodeURIComponent(R.token)}&shikimori_id=${encodeURIComponent(shikimoriId)}`;
+    // запрос идёт через CORS-прокси по очереди; если список пуст, пробуем напрямую
+    const routes = (R.proxies || []).map((p) => String(p).replace("{url}", encodeURIComponent(targetUrl)));
+    if (!routes.length) routes.push(targetUrl);
+    let data = null;
+    let lastFail = "";
+    for (const route of routes) {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), R.timeoutMs || 8000);
+      try {
+        const res = await fetch(route, { signal: ctrl.signal });
+        if (!res.ok) { lastFail = "прокси ответил ошибкой " + res.status; continue; }
+        data = await res.json();
+        break;
+      } catch (e) {
+        lastFail = e.name === "AbortError" ? "прокси не ответил за " + (R.timeoutMs || 8000) / 1000 + " с" : "запрос не прошёл (сеть или блокировка)";
+      } finally {
+        clearTimeout(t);
+      }
+    }
+    if (!data) return why("Kodik API недоступен: " + lastFail);
     try {
-      const url = `${R.api}?token=${encodeURIComponent(R.token)}&shikimori_id=${encodeURIComponent(shikimoriId)}`;
-      const res = await fetch(url, { signal: ctrl.signal });
-      if (!res.ok) return why("API Kodik ответил ошибкой " + res.status);
-      const data = await res.json();
-      if (data && data.error) return why("API Kodik: " + data.error);
+      if (data.error) return why("API Kodik: " + data.error);
       const link = data && Array.isArray(data.results) && data.results[0] && data.results[0].link;
       if (!link) {
         kodikCache.set(shikimoriId, null); // «нет такого аниме» запоминаем, сбои сети нет
         return why("Kodik не знает этого аниме");
       }
       // ссылка приходит вида //kodik.info/video/...: меняем заблокированный домен на настроенный
-      const host = String(R.host || "https://kodik.cc/").replace(/\/?$/, "/");
+      const host = String(R.host || "https://aniqit.com/").replace(/\/?$/, "/");
       const secureLink = String(link).replace(/^(https?:)?\/\/[^/]+\//, host);
       if (!/^https:\/\//.test(secureLink)) return why("ссылка Kodik в неожиданном виде");
       kodikCache.set(shikimoriId, secureLink);
       return secureLink;
     } catch (e) {
-      return why(e.name === "AbortError" ? "API Kodik не ответил за " + (R.timeoutMs || 8000) / 1000 + " с (закрыт у провайдера?)" : "запрос к API Kodik не прошёл: сеть заблокирована или сервер не разрешает запросы с сайта (CORS)");
-    } finally {
-      clearTimeout(t);
+      return why("ответ Kodik в неожиданном виде");
     }
   }
 
