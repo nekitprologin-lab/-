@@ -212,3 +212,26 @@ h2 { font-size: 20px; font-weight: 500; }
 .skel{height:12px;border-radius:6px;margin:9px 0;background:linear-gradient(90deg,rgba(255,255,255,.06),rgba(255,255,255,.14),rgba(255,255,255,.06));background-size:200% 100%;animation:skel 1.2s linear infinite}
 .skel.s{width:60%}
 @keyframes skel{to{background-position:-200% 0}}
+
+/* меню пользователя */
+.usermenu{position:relative}
+.usermenu .menu{position:absolute;right:0;top:calc(100% + 6px);min-width:200px;background:var(--panel);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,.4);z-index:60;display:flex;flex-direction:column}
+.usermenu .menu[hidden]{display:none}
+.usermenu .menu a,.usermenu .menu button{display:block;width:100%;text-align:left;padding:9px 12px;border-radius:8px;background:none;border:0;color:var(--text);font:inherit;cursor:pointer}
+.usermenu .menu a:hover,.usermenu .menu button:hover{background:rgba(255,255,255,.07)}
+.usermenu .menu hr{border:0;border-top:1px solid rgba(255,255,255,.08);margin:4px 0}
+.usermenu .menu .danger{color:var(--rose,#ff7a90)}
+/* окно добавления */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow:auto}
+.modal-box{background:var(--bg-2,#1a1a28);background:var(--panel);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:18px;width:100%;max-width:560px}
+.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.modal-head h3{margin:0;font-size:18px}
+.modal .x{background:none;border:0;color:var(--muted);font-size:18px;cursor:pointer}
+.add-res{margin-top:12px;display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow:auto}
+.add-row{display:flex;gap:12px;align-items:center;padding:6px;border-radius:10px;background:rgba(255,255,255,.04)}
+.add-row img{width:44px;height:62px;object-fit:cover;border-radius:6px}
+.add-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.add-info b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.add-info span{font-size:12px}
+/* «продолжаем с…» */
+.resume{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:10px;border-radius:12px;background:rgba(139,123,255,.15);border:1px solid rgba(139,123,255,.4)}

@@ -271,7 +271,7 @@
           </div>
           <div class="chips">${(m.genres || []).map((g) => `<a class="chip" href="#/search?genre=${encodeURIComponent(g)}">${esc(Api.genreRu(g))}</a>`).join("")}</div>
           <div class="actions">
-            <a class="btn primary" href="#/watch/${m.id}/${startEp}">${cur ? "Продолжить: серия " + cur : "Смотреть"}</a>
+            <a class="btn primary" href="#/watch/${m.id}/${startEp}">${cur ? "Продолжить: серия " + cur + ((Pos.get(m.id) && String(Pos.get(m.id).ep) === String(cur) && Pos.get(m.id).t > 10) ? " · " + mmss(Pos.get(m.id).t) : "") : "Смотреть"}</a>
             <button class="btn ${lib.liked ? "liked" : ""}" id="likeBtn">${lib.liked ? "♥ Нравится" : "♡ Нравится"}</button>
             <select class="select" id="statusSel" aria-label="Статус">
               <option value="">Не в списке</option>
@@ -344,6 +344,15 @@
     get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
   };
+
+  // Позиция просмотра (минута серии) хранится в этом браузере; серия и статус синхронизируются через аккаунт
+  const Pos = {
+    key: (id) => "tsukimi:pos:" + ((Store.user && Store.user.name) || "guest") + ":" + id,
+    get(id) { try { return JSON.parse(localStorage.getItem(Pos.key(id)) || "null"); } catch (e) { return null; } },
+    set(id, ep, t) { try { localStorage.setItem(Pos.key(id), JSON.stringify({ ep: String(ep), t: Math.floor(t), at: Date.now() })); } catch (e) {} },
+    clear(id) { try { localStorage.removeItem(Pos.key(id)); } catch (e) {} },
+  };
+  const mmss = (t) => { t = Math.floor(t); const h = Math.floor(t / 3600), m2 = Math.floor((t % 3600) / 60), s2 = t % 60; return (h ? h + ":" + String(m2).padStart(2, "0") : m2) + ":" + String(s2).padStart(2, "0"); };
 
   // освобождаем плеер, когда уходим со страницы просмотра
   function stopPlayer() {
@@ -564,6 +573,25 @@
     let idx = Math.max(0, eps.findIndex((e) => String(e.ordinal) === String(curOrd)));
     let netRetries = 0;
 
+    // запоминаем минуту просмотра (раз в несколько секунд); в конце серии позицию сбрасываем
+    let lastSave = 0;
+    video.addEventListener("timeupdate", () => {
+      const now = Date.now();
+      if (now - lastSave < 5000 || !video.currentTime || video.currentTime < 5) return;
+      lastSave = now;
+      if (video.duration && video.duration - video.currentTime < 30) return Pos.clear(m.id);
+      Pos.set(m.id, eps[idx].ordinal, video.currentTime);
+    });
+    video.addEventListener("pause", () => { if (video.currentTime > 5 && !(video.duration && video.duration - video.currentTime < 30)) Pos.set(m.id, eps[idx].ordinal, video.currentTime); });
+    video.addEventListener("ended", () => Pos.clear(m.id));
+    function resumeBar(text, onRestart) {
+      let bar = $("#resumeBar");
+      if (!bar) { bar = document.createElement("div"); bar.id = "resumeBar"; bar.className = "resume"; box.parentNode.insertBefore(bar, box); }
+      bar.innerHTML = `<span>${text}</span><button type="button" class="btn" id="resumeRestart">С начала</button>`;
+      bar.querySelector("#resumeRestart").onclick = () => { onRestart(); bar.remove(); };
+      setTimeout(() => bar.isConnected && bar.remove(), 12000);
+    }
+
     // лучшее доступное качество не выше выбранного человеком (по умолчанию самое высокое)
     function pickQuality(e) {
       const want = Number(store.get("tsukimi:quality") || 1080);
@@ -605,9 +633,17 @@
       }
     }
 
-    function select(i, { autoplay = false, startAt = 0 } = {}) {
+    function select(i, { autoplay = false, startAt = 0, resume = false } = {}) {
       idx = i;
       const e = eps[i];
+      const bar0 = $("#resumeBar"); if (bar0) bar0.remove();
+      if (!startAt) { // продолжаем с запомненной минуты, если это та же серия
+        const p = Pos.get(m.id);
+        if (p && String(p.ep) === String(e.ordinal) && p.t > 10) {
+          startAt = p.t;
+          resumeBar("Продолжаем серию " + esc(e.ordinal) + " с " + mmss(p.t), () => { Pos.clear(m.id); video.currentTime = 0; });
+        }
+      }
       curOrd = e.ordinal;
       $("#epTitle").textContent = "Серия " + e.ordinal + (e.name ? ": " + e.name : "");
       $("#epsBox").querySelectorAll(".ep").forEach((b, j) => {
@@ -823,10 +859,77 @@
     $("#navLinks").innerHTML =
       link("#/search", "Каталог") +
       (Store.user
-        ? link("#/library", "Библиотека") + link("#/friends", "Друзья") + `<button id="outBtn" title="Выйти">${esc(Store.user.name)} · выйти</button>`
+        ? link("#/library", "Библиотека") + link("#/friends", "Друзья") +
+          `<div class="usermenu"><button id="userBtn" aria-haspopup="true" aria-expanded="false">${esc(Store.user.name)} ▾</button>
+            <div class="menu" id="userMenu" hidden>
+              <a href="#/library">Моя библиотека</a>
+              <button type="button" id="addAnimeBtn">Добавить аниме</button>
+              <hr>
+              <button type="button" id="outBtn" class="danger">Выйти</button>
+            </div></div>`
         : link("#/login", "Войти"));
-    const out = $("#outBtn");
-    if (out) out.onclick = async () => { await Store.signOut(); location.hash = "#/"; route(); };
+    const ub = $("#userBtn"), menu = $("#userMenu");
+    if (!ub) return;
+    const close = () => { menu.hidden = true; ub.setAttribute("aria-expanded", "false"); };
+    ub.onclick = (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; ub.setAttribute("aria-expanded", String(!menu.hidden)); };
+    menu.onclick = (e) => { e.stopPropagation(); if (e.target.closest("a")) close(); };
+    document.addEventListener("click", close, { once: true });
+    $("#addAnimeBtn").onclick = () => { close(); openAddAnime(); };
+    $("#outBtn").onclick = async () => { close(); await Store.signOut(); location.hash = "#/"; route(); };
+  }
+
+  // окно «Добавить аниме»: отмечаем уже просмотренное, на этом строятся рекомендации
+  function openAddAnime() {
+    if (!Store.user) return;
+    const old = $("#addModal"); if (old) old.remove();
+    const el = document.createElement("div");
+    el.id = "addModal";
+    el.className = "modal";
+    el.innerHTML = `<div class="modal-box" role="dialog" aria-label="Добавить аниме">
+        <div class="modal-head"><h3>Добавить просмотренное аниме</h3><button type="button" class="x" id="addClose" aria-label="Закрыть">✕</button></div>
+        <p class="muted" style="margin:0 0 10px">Ищи по-русски или по-английски и отмечай, что уже смотрел. По этому списку подбираются рекомендации.</p>
+        <input class="select" id="addQ" placeholder="Название аниме…" style="width:100%" autocomplete="off">
+        <div id="addRes" class="add-res"></div></div>`;
+    document.body.appendChild(el);
+    const close = () => { el.remove(); document.removeEventListener("keydown", onKey); };
+    const onKey = (e) => e.key === "Escape" && close();
+    document.addEventListener("keydown", onKey);
+    el.onclick = (e) => { if (e.target === el) close(); };
+    $("#addClose").onclick = close;
+    const res = $("#addRes");
+    let items = [], timer = null, seq = 0;
+    const draw = () => {
+      res.innerHTML = items.length ? items.map((m) => {
+        const done = (Store.get(m.id) || {}).status === "completed";
+        return `<div class="add-row"><img src="${esc(m.coverImage && m.coverImage.large)}" alt="" loading="lazy">
+          <div class="add-info"><b>${esc(Api.title(m))}</b><span class="muted">${[m.seasonYear, STATUS_FORMAT[m.format] || m.format, m.episodes ? m.episodes + " эп." : ""].filter(Boolean).join(" · ")}</span></div>
+          <button type="button" class="btn ${done ? "primary" : ""}" data-id="${m.id}">${done ? "✓ Просмотрено" : "Просмотрено"}</button></div>`;
+      }).join("") : `<p class="muted">${$("#addQ").value.trim() ? "Ничего не найдено" : ""}</p>`;
+    };
+    res.onclick = async (e) => {
+      const b = e.target.closest("button[data-id]");
+      if (!b) return;
+      const m = items.find((x) => String(x.id) === b.dataset.id);
+      if (!m) return;
+      const done = (Store.get(m.id) || {}).status === "completed";
+      try {
+        await Store.save(m, done ? { status: null } : { status: "completed", episode: m.episodes || null });
+        draw();
+        toast(done ? "Убрано из просмотренного" : "Добавлено: " + Api.title(m));
+      } catch (err) { toast(err.message); }
+    };
+    $("#addQ").oninput = (e) => {
+      clearTimeout(timer);
+      const q = e.target.value.trim();
+      if (!q) { items = []; return draw(); }
+      timer = setTimeout(async () => {
+        const my = ++seq;
+        res.innerHTML = `<p class="muted">Ищу…</p>`;
+        try { const r = await Api.search({ q }); if (my === seq) { items = r.items.slice(0, 12); draw(); } }
+        catch (err) { if (my === seq) res.innerHTML = `<p class="muted">${esc(err.message)}</p>`; }
+      }, 350);
+    };
+    $("#addQ").focus();
   }
 
   async function route() {
