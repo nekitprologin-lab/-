@@ -27,9 +27,9 @@ window.APP_CONFIG = {
     enabled: true,
     sandbox: "allow-scripts allow-same-origin allow-forms allow-presentation",
     sources: [
-      { name: "Kodik", url: "https://kodik.cc/find-player?shikimoriID={shikimori_id}" },
-      { name: "Aniboom", url: "https://aniboom.one/embed/{shikimori_id}" },
-      { name: "Зеркало", url: "https://kodik.biz/find-player?shikimoriID={shikimori_id}" },
+      { name: "Kodik (теневой)", url: "https://aniqit.com/player?shikimoriID={shikimori_id}" },
+      { name: "Collaps", url: "https://api.strvid.ws/embed/shikimori/{shikimori_id}" },
+      { name: "Универсальный", url: "https://yohoho.cc/?shikimori={shikimori_id}" },
     ],
   },
 };
