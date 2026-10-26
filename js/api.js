@@ -344,7 +344,31 @@
     return { season: ["WINTER", "SPRING", "SUMMER", "FALL"][Math.floor(m / 3)], year: d.getFullYear() };
   }
 
+  // Качественный широкий баннер: у Kitsu обложки до 3360×800, у AniList около 1900×400 (на большом экране мылятся).
+  // Ищем по номеру MyAnimeList; найденное адрес запоминаем навсегда, «нет» — на сутки.
+  const heroMem = new Map();
+  async function heroImg(m) {
+    const mal = m && m.idMal;
+    if (!mal) return null;
+    if (heroMem.has(mal)) return heroMem.get(mal);
+    const key = "tsukimi:hero:" + mal;
+    try {
+      const c = JSON.parse(localStorage.getItem(key) || "null");
+      if (c && (c.u || Date.now() - c.t < 864e5)) { heroMem.set(mal, c.u || null); return c.u || null; }
+    } catch (e) {}
+    let u = null;
+    try {
+      const j = await timed("https://kitsu.io/api/edge/mappings?filter[externalSite]=myanimelist/anime&filter[externalId]=" + mal + "&include=item&fields[anime]=coverImage", 5000);
+      const ci = (((j.included || [])[0] || {}).attributes || {}).coverImage;
+      u = ci && (ci.large || ci.original) || null;
+    } catch (e) { heroMem.set(mal, null); return null; }
+    heroMem.set(mal, u);
+    try { localStorage.setItem(key, JSON.stringify({ u, t: Date.now() })); } catch (e) {}
+    return u;
+  }
+
   window.Api = {
+    heroImg,
     GENRES,
     genreRu: (g) => GENRES_RU[g] || g,
     // название остаётся английским (чтобы было понятно, о чём речь), русское — как подпись

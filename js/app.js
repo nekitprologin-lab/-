@@ -118,19 +118,27 @@
   async function pageHome() {
     loading();
     const [trending, season] = await Promise.all([Api.trending(18), Api.thisSeason(18)]);
-    const hero = trending.find((m) => m.bannerImage) || trending[0];
+    // карусель: самые популярные сейчас тайтлы с широкой картинкой (если баннеров нет — обложка)
+    let slides = trending.filter((m) => m.bannerImage).slice(0, 6);
+    if (!slides.length) slides = trending.slice(0, 1);
     const lib = Store.all();
 
     let html = "";
-    if (hero) {
-      html += `<div class="hero" style="background-image:url('${esc(hero.bannerImage || (hero.coverImage && hero.coverImage.large))}')">
-        <div>
-          <h1>${esc(Api.title(hero))}</h1>
-          <div class="meta"><span><b>${hero.averageScore ? (hero.averageScore / 10).toFixed(1) : "—"}</b> оценка</span>
-          <span>${esc((hero.genres || []).slice(0, 3).map(Api.genreRu).join(", "))}</span></div>
-          <p></p>
-          <a class="btn primary" href="#/anime/${hero.id}">Открыть</a>
-        </div></div>`;
+    if (slides.length) {
+      html += `<div class="hero" id="hero">${slides.map((hero, i) => `
+        <div class="hero-slide ${i === 0 ? "on" : ""}" data-id="${hero.id}">
+          <div class="bg" style="background-image:url('${esc(hero.bannerImage || (hero.coverImage && hero.coverImage.large))}')"></div>
+          <div class="hero-in">
+            <span class="hero-tag">Популярно сейчас</span>
+            <h1>${esc(Api.title(hero))}</h1>
+            <div class="meta"><span><b>${hero.averageScore ? (hero.averageScore / 10).toFixed(1) : "—"}</b> оценка</span>
+            <span>${esc((hero.genres || []).slice(0, 3).map(Api.genreRu).join(", "))}</span></div>
+            <p></p>
+            <a class="btn primary" href="#/anime/${hero.id}">Открыть</a>
+          </div>
+        </div>`).join("")}
+        ${slides.length > 1 ? `<div class="hero-dots">${slides.map((_, i) => `<button class="hd ${i === 0 ? "on" : ""}" data-i="${i}" aria-label="Слайд ${i + 1}"><i></i></button>`).join("")}</div>` : ""}
+      </div>`;
     }
     html += `<div class="wrap">`;
 
@@ -146,17 +154,55 @@
     html += `</div>`;
     app.innerHTML = html;
 
-    // описание героя (убираем html-теги из ответа API)
-    if (hero) {
-      Api.detail(hero.id).then((d) => {
-        const p = $(".hero p");
-        if (!p || !d) return;
-        const en = (d.description || "").replace(/<[^>]*>/g, "");
-        p.textContent = en;
-        // в шапке влезает три строки: переводим только начало, это быстрее
-        const head = en.length > 420 ? en.slice(0, 420).replace(/[^.!?…]*$/, "") || en.slice(0, 420) : en;
-        Api.translate(head, "h" + d.id).then((ru) => { if (ru && $(".hero p")) $(".hero p").textContent = ru; });
-      }).catch(() => {});
+    // описание слайда подгружается, когда до него доходит очередь (и заранее для следующего), чтобы не нагружать AniList
+    const heroEl = $("#hero");
+    if (heroEl) {
+      const filled = new Set();
+      const fill = (slide) => {
+        if (!slide || filled.has(slide.dataset.id)) return;
+        filled.add(slide.dataset.id);
+        Api.detail(Number(slide.dataset.id)).then((d) => {
+          const p = $("p", slide);
+          if (!p || !d) return;
+          const en = (d.description || "").replace(/<[^>]*>/g, "");
+          p.textContent = en;
+          // в шапке влезает три строки: переводим только начало, это быстрее
+          const head = en.length > 420 ? en.slice(0, 420).replace(/[^.!?…]*$/, "") || en.slice(0, 420) : en;
+          Api.translate(head, "h" + d.id).then((ru) => { if (ru) p.textContent = ru; });
+        }).catch(() => {});
+      };
+      const sl = $$(".hero-slide", heroEl), dots = $$(".hd", heroEl);
+      let cur = 0;
+      const go = (n) => {
+        if (!sl.length) return;
+        n = (n + sl.length) % sl.length;
+        sl[cur].classList.remove("on"); dots[cur] && dots[cur].classList.remove("on");
+        cur = n;
+        sl[cur].classList.add("on");
+        if (dots[cur]) { dots[cur].classList.remove("on"); void dots[cur].offsetWidth; dots[cur].classList.add("on"); }
+        fill(sl[cur]); fill(sl[(cur + 1) % sl.length]);
+      };
+      // картинки получше: подменяем баннер AniList на широкую обложку Kitsu, когда она загрузилась (плавно, без прыжка)
+      slides.forEach((m, i) => {
+        Api.heroImg(m).then((u) => {
+          if (!u) return;
+          const img = new Image();
+          img.onload = () => { const bg = $(".bg", sl[i]); if (bg) { bg.style.backgroundImage = "url('" + u + "')"; bg.classList.add("hq"); } };
+          img.src = u;
+        });
+      });
+      fill(sl[0]);
+      setTimeout(() => fill(sl[1]), 1500);
+      dots.forEach((d, i) => { d.onclick = () => go(i); });
+      // таймер — это полоска прогресса у активной точки: по её окончанию листаем дальше; при наведении она на паузе
+      heroEl.addEventListener("animationend", (e) => { if (e.target.parentNode && e.target.parentNode.classList.contains("hd") && e.target.parentNode.classList.contains("on")) go(cur + 1); });
+      let x0 = null;
+      heroEl.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+      heroEl.addEventListener("touchend", (e) => {
+        if (x0 == null) return;
+        const dx = e.changedTouches[0].clientX - x0; x0 = null;
+        if (Math.abs(dx) > 50) go(cur + (dx < 0 ? 1 : -1));
+      }, { passive: true });
     }
 
     // рекомендации и друзья догружаются отдельно, чтобы не задерживать страницу
