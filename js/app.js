@@ -370,8 +370,9 @@
       Api.seasons(m.id).then((list) => {
         const box = $("#seasons");
         if (!box || !list.length) return;
+        const labels = seasonLabels(list);
         box.innerHTML = section("Сезоны", `<div class="seasons">${list.map((n, i) =>
-          `<a class="season ${n.id === m.id ? "cur" : ""}" href="#/anime/${n.id}"><b>Сезон ${i + 1}</b><span data-mal="${n.idMal || ""}">${esc(Api.title(n))}</span>${n.status === "NOT_YET_RELEASED" ? `<small>Скоро${n.seasonYear || (n.startDate && n.startDate.year) ? " · " + (n.seasonYear || n.startDate.year) : ""}</small>` : n.seasonYear || (n.startDate && n.startDate.year) ? `<small>${n.seasonYear || n.startDate.year}</small>` : ""}</a>`).join("")}</div>`);
+          `<a class="season ${n.id === m.id ? "cur" : ""}" href="#/anime/${n.id}"><b>${esc(labels[i])}</b><span data-mal="${n.idMal || ""}">${esc(Api.title(n))}</span>${n.status === "NOT_YET_RELEASED" ? `<small>Скоро${n.seasonYear || (n.startDate && n.startDate.year) ? " · " + (n.seasonYear || n.startDate.year) : ""}</small>` : n.seasonYear || (n.startDate && n.startDate.year) ? `<small>${n.seasonYear || n.startDate.year}</small>` : ""}</a>`).join("")}</div>`);
       }).catch(() => {});
     }
 
@@ -446,6 +447,28 @@
     },
   };
   const mmss = (t) => { t = Math.floor(t); const h = Math.floor(t / 3600), m2 = Math.floor((t % 3600) / 60), s2 = t % 60; return (h ? h + ":" + String(m2).padStart(2, "0") : m2) + ":" + String(s2).padStart(2, "0"); };
+
+  // Подписи сезонов: номер сезона и часть берём из названия («3rd Season Part 2» -> «Сезон 3 · часть 2»);
+  // если номера в названии нет, это следующий сезон после предыдущего.
+  function seasonLabels(list) {
+    const roman = { II: 2, III: 3, IV: 4, V: 5, VI: 6 };
+    let season = 0;
+    return list.map((n, i) => {
+      const name = (n.title && (n.title.english || n.title.romaji)) || "";
+      const alt = (n.title && n.title.romaji) || "";
+      const txt = name + " | " + alt;
+      let sm = txt.match(/(\d+)(?:st|nd|rd|th)\s+season/i) || txt.match(/season\s+(\d+)/i);
+      let num = sm ? Number(sm[1]) : 0;
+      if (!num) { const r = name.match(/\s(II|III|IV|V|VI)(?:\s|$|:)/); if (r) num = roman[r[1]]; }
+      const pm = txt.match(/part\s+(\d+)/i) || txt.match(/(\d+)(?:st|nd|rd|th)?\s+cour/i);
+      const part = pm ? Number(pm[1]) : 0;
+      if (num) season = num;
+      else if (i === 0) season = 1;
+      else if (part > 1) { /* вторая часть того же сезона */ }
+      else season += 1;
+      return "Сезон " + season + (part ? " · часть " + part : "");
+    });
+  }
 
   // освобождаем плеер, когда уходим со страницы просмотра
   function stopPlayer() {
