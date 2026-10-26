@@ -343,74 +343,6 @@
     return hlsLoading;
   }
 
-  // ---------- Запасной источник: Kinobox ----------
-  // Виджет работает в изолированной рамке без доступа к странице и данным сайта, а результат
-  // (получилось или нет) сообщает через postMessage. Kodik исключён жёстко, даже если он попадёт в настройки.
-  const KINOBOX_EXCLUDE = ["kodik"];
-
-  // -> Promise<boolean>: true, если виджет показал плеер; false, если скрипт не загрузился, упал или молчит
-  function mountKinobox(box, m) {
-    const k = cfg.KINOBOX || {};
-    if (!k.enabled || !k.script || !m.idMal) return Promise.resolve(false);
-
-    const players = (k.players || []).filter((p) => !KINOBOX_EXCLUDE.includes(String(p).toLowerCase()));
-    const opts = { search: { shikimori: String(m.idMal), title: Api.title(m) }, players };
-    const optsJson = JSON.stringify(opts).replace(/</g, "\\u003c");
-    const token = Math.random().toString(36).slice(2);
-
-    const doc = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>html,body{margin:0;height:100%;background:#000}.kinobox_div{width:100%;height:100%}</style>
-<script>var T=${JSON.stringify(token)};function post(s){parent.postMessage({kinobox:s,token:T},"*");}<\/script></head>
-<body><div class="kinobox_div"></div>
-<script src="${esc(k.script)}" onerror="window.kbFail=1;post('fail')"><\/script>
-<script>
-(function () {
-  if (window.kbFail) return;
-  var o = ${optsJson};
-  try {
-    if (typeof kbox === "function") kbox(".kinobox_div", o);
-    else if (typeof Kinobox === "function") new Kinobox(".kinobox_div", o).init();
-    else { post("fail"); return; }
-  } catch (e) { post("fail"); return; }
-  var n = 0, t = setInterval(function () {
-    n++;
-    if (document.querySelector(".kinobox_div").children.length) { clearInterval(t); post("ok"); }
-    else if (n > 16) { clearInterval(t); post("fail"); }
-  }, 500);
-})();
-<\/script></body></html>`;
-
-    return new Promise((resolve) => {
-      const frame = document.createElement("iframe");
-      frame.setAttribute("sandbox", "allow-scripts allow-presentation allow-forms");
-      frame.setAttribute("allow", "autoplay; fullscreen; picture-in-picture");
-      frame.setAttribute("allowfullscreen", "");
-      frame.title = "Запасной источник";
-      let done = false;
-      const finish = (ok) => {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        window.removeEventListener("message", onMsg);
-        const wait = $("#kbWait", box);
-        if (wait) wait.remove();
-        if (!ok) frame.remove();
-        resolve(ok);
-      };
-      const onMsg = (e) => {
-        if (e.source !== frame.contentWindow || !e.data || e.data.token !== token) return;
-        if (e.data.kinobox === "ok") finish(true);
-        else if (e.data.kinobox === "fail") finish(false);
-      };
-      const timer = setTimeout(() => finish(false), k.timeoutMs || 12000);
-      window.addEventListener("message", onMsg);
-      box.innerHTML = "";
-      box.appendChild(frame);
-      box.insertAdjacentHTML("beforeend", `<div class="player-note" id="kbWait">Этого аниме нет в AniLibria. Ищу в запасных источниках…</div>`);
-      frame.srcdoc = doc;
-    });
-  }
-
   async function pageWatch(id, epParam) {
     loading();
     const m = await Api.detail(id);
@@ -422,6 +354,7 @@
         <div class="grow"><h1 id="epTitle">Серия</h1></div>
         <select class="select" id="qualitySel" aria-label="Качество" hidden></select>
       </div>
+      <div class="srcbar" id="srcBar" role="tablist" aria-label="Источник видео" hidden></div>
       <div class="player" id="player"><div class="player-empty"><div>Ищу «${esc(Api.title(m))}» в каталоге AniLibria…</div></div></div>
       <div class="watch-bar" id="navBar" hidden>
         <button class="btn" id="prevBtn" type="button">← Назад</button>
@@ -434,18 +367,20 @@
     const note = (html) => { if (box.isConnected) box.innerHTML = `<div class="player-empty"><div>${html}</div></div>`; };
     const overlay = (text) => { if (box.isConnected) box.insertAdjacentHTML("beforeend", `<div class="player-note">${esc(text)}</div>`); };
 
-    // последняя ступень каскада: не ошибка, а трейлер (если он есть) и понятное объяснение
-    const unavailable = (text) => {
-      const yt = m.trailer && String(m.trailer.site).toLowerCase() === "youtube" && /^[\w-]{6,20}$/.test(m.trailer.id) ? m.trailer.id : null;
-      if (yt) {
-        box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${yt}" title="Трейлер" allow="fullscreen; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
-        $("#epsBox").innerHTML = `<p class="muted" style="max-width:70ch">${text} Пока можно посмотреть трейлер.</p>`;
-      } else {
-        note(text);
-      }
-    };
+    const trailerId = m.trailer && String(m.trailer.site).toLowerCase() === "youtube" && /^[\w-]{6,20}$/.test(m.trailer.id) ? m.trailer.id : null;
+    const fill = (tpl, vars) => String(tpl || "").replace(/\{(\w+)\}/g, (_, k) => encodeURIComponent(vars[k] == null ? "" : vars[k]));
+    const L = cfg.LINKS || {};
+    const R = cfg.RESERVE || {};
+    const reserveUrl = R.enabled && m.idMal && /^https:\/\//.test(R.url || "")
+      ? fill(R.url, { shikimori: m.idMal, anilist: m.id, title: Api.title(m) }) : null;
 
-    // ступень 1: AniLibria, прямой поток m3u8
+    // кнопки страховки: поиск на AnimeGO и страница на Shikimori
+    const linksHtml = () => `<div class="alt-links">
+      ${L.animego ? `<a class="btn" href="${esc(fill(L.animego, { q: Api.title(m) }))}" target="_blank" rel="noopener noreferrer">Смотреть на AnimeGO ↗</a>` : ""}
+      ${L.shikimori && m.idMal ? `<a class="btn" href="${esc(fill(L.shikimori, { mal: m.idMal }))}" target="_blank" rel="noopener noreferrer">Shikimori ↗</a>` : ""}
+    </div>`;
+
+    // ступень 1: AniLibria, прямой поток m3u8 (умный поиск и ручная карта внутри Libria.find)
     let found = null;
     let reason = `Серий «${esc(Api.title(m))}» нет в AniLibria.`;
     try {
@@ -455,23 +390,70 @@
     }
     if (!box.isConnected) return; // пока искали, ушли на другую страницу
     if (found && found.blocked) {
-      // закрыто правообладателем или регионом: обходить это запасными источниками не будем
-      return unavailable("AniLibria закрыла это аниме от просмотра по требованию правообладателя или из-за региона.");
-    }
-    if (found && !found.episodes.length) {
+      reason = "AniLibria закрыла это аниме от просмотра по требованию правообладателя или из-за региона.";
       found = null;
+    } else if (found && !found.episodes.length) {
       reason = "У AniLibria пока нет загруженных серий этого аниме.";
+      found = null;
     }
 
-    // ступень 2: запасной источник Kinobox (без Kodik); пока он недоступен, сразу идём дальше
-    if (!found) {
-      const ok = await mountKinobox(box, m);
-      if (!box.isConnected || ok) return;
-      // ступень 3: заглушка с трейлером вместо ошибки
-      return unavailable(reason + " Запасные источники тоже не ответили.");
+    const srcBar = $("#srcBar");
+    const epsBox = $("#epsBox");
+    let tab = 0;
+
+    function drawTabs() {
+      const tabs = [
+        [1, "Источник 1 (AniLibria)", !found],
+        [2, "Источник 2 (Резерв)", !reserveUrl],
+        [3, "Трейлер и ссылки", false],
+      ];
+      srcBar.hidden = false;
+      srcBar.innerHTML = tabs
+        .map(([n, label, off]) => `<button type="button" role="tab" class="chip ${n === tab ? "on" : ""} ${off ? "off" : ""}" data-t="${n}" aria-selected="${n === tab}">${label}${off ? " · нет" : ""}</button>`)
+        .join("");
     }
+
+    function setTab(n) {
+      tab = n;
+      stopPlayer();
+      drawTabs();
+      $("#qualitySel").hidden = true;
+      $("#navBar").hidden = true;
+      epsBox.innerHTML = "";
+      if (n === 1) {
+        if (found) return startNative();
+        $("#epTitle").textContent = "Источник 1";
+        note(reason + (reserveUrl ? " Попробуй «Источник 2»." : ""));
+        epsBox.innerHTML = linksHtml();
+      } else if (n === 2) {
+        $("#epTitle").textContent = "Резервный плеер";
+        if (!reserveUrl) {
+          note("Резервный плеер не настроен.");
+        } else {
+          // сторонняя страница: без allow-popups и allow-top-navigation, чтобы не открывала рекламу и не уводила со страницы
+          box.innerHTML = `<iframe src="${esc(reserveUrl)}" title="Резервный плеер" sandbox="allow-scripts allow-same-origin allow-presentation allow-forms" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="no-referrer"></iframe>`;
+        }
+        epsBox.innerHTML = `<p class="muted" style="max-width:70ch">Это сторонний плеер, он может не знать этот тайтл. Если рамка пустая или видео не идёт, открой «Трейлер и ссылки».</p>${linksHtml()}`;
+      } else {
+        $("#epTitle").textContent = "Трейлер и ссылки";
+        if (trailerId) {
+          box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${trailerId}" title="Трейлер" allow="fullscreen; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+        } else {
+          note("Трейлера у этого аниме нет.");
+        }
+        epsBox.innerHTML = `<p class="muted" style="max-width:70ch">${reason} Серии можно посмотреть на других сайтах.</p>${linksHtml()}`;
+      }
+    }
+    srcBar.onclick = (ev) => {
+      const b = ev.target.closest("[data-t]");
+      if (b && Number(b.dataset.t) !== tab) setTab(Number(b.dataset.t));
+    };
+
+    let curOrd = epParam;
+    // сначала AniLibria, если не нашлось: резерв, если и его нет: трейлер со ссылками
+    async function startNative() {
     const eps = found.episodes;
-
+    $("#epTitle").textContent = "Серия";
     // 2) подключаем hls.js
     try {
       await loadHls();
@@ -491,7 +473,7 @@
       `<div class="eps">${eps.map((e, i) => `<button type="button" class="ep" data-i="${i}">${esc(e.ordinal)}</button>`).join("")}</div>`
     );
 
-    let idx = Math.max(0, eps.findIndex((e) => String(e.ordinal) === String(epParam)));
+    let idx = Math.max(0, eps.findIndex((e) => String(e.ordinal) === String(curOrd)));
     let netRetries = 0;
 
     // лучшее доступное качество не выше выбранного человеком (по умолчанию самое высокое)
@@ -538,6 +520,7 @@
     function select(i, { autoplay = false, startAt = 0 } = {}) {
       idx = i;
       const e = eps[i];
+      curOrd = e.ordinal;
       $("#epTitle").textContent = "Серия " + e.ordinal + (e.name ? ": " + e.name : "");
       $("#epsBox").querySelectorAll(".ep").forEach((b, j) => {
         b.classList.toggle("cur", j === i);
@@ -586,6 +569,9 @@
     };
 
     select(idx, { autoplay: true });
+    }
+
+    setTab(found ? 1 : reserveUrl ? 2 : 3);
   }
 
   function pageLibrary(params) {

@@ -143,6 +143,9 @@ h2 { font-size: 20px; font-weight: 500; }
 [hidden] { display: none !important; }
 .player-note { position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 10px 14px; border-radius: 10px; background: var(--panel); color: var(--moon); font-size: 14px; }
 .player-empty { height: 100%; display: grid; place-items: center; text-align: center; padding: 24px; color: var(--muted); }
+.srcbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.srcbar .chip.off { opacity: .55; }
+.alt-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 .watch-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 16px 0; }
 .watch-bar .grow { flex: 1; min-width: 200px; }
 .watch-bar h1 { font-size: 18px; font-weight: 500; }

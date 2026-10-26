@@ -123,21 +123,40 @@
   // в ответе mal и shikimori — объекты вида {id, url, ...}; у части релизов заполнено только одно из полей
   const idsOf = (r) => ["mal", "shikimori"].map((k) => r[k] && r[k].id).filter(Boolean).map(Number);
 
-  // варианты запроса: английское и ромадзи-название, плюс без «Season 2», скобок и подзаголовка
-  function queries(m) {
+  // Отрезаем всё после двоеточия или дефиса, номер сезона, части и скобки: «Блич: Тысячелетняя война» -> «Блич»
+  function clean(n) {
+    return n
+      .replace(/\(.*?\)/g, " ")
+      .replace(/\b(season\s*\d+|\d+(st|nd|rd|th)\s+season|part\s*\d+)\b/gi, " ")
+      .replace(/(\d+\s*[-–]?\s*й?\s*сезон|сезон\s*\d+|часть\s*\d+)/gi, " ")
+      .replace(/\s*[:\-–—].*$/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  // порядок: русское название целиком, русское очищенное, потом английское и ромадзи (целиком и очищенные)
+  function queries(m, ru) {
     const out = [];
+    if (ru) out.push(ru, clean(ru));
     [m.title.english, m.title.romaji].forEach((n) => {
       if (!n) return;
-      out.push(n);
-      const short = n
-        .replace(/\(.*?\)/g, " ")
-        .replace(/\b(season\s*\d+|\d+(st|nd|rd|th)\s+season|part\s*\d+)\b/gi, " ")
-        .replace(/[:\-–].*$/, "")
-        .replace(/\s+/g, " ")
-        .trim();
-      if (short.length > 2) out.push(short);
+      out.push(n, clean(n));
     });
-    return [...new Set(out)];
+    return [...new Set(out.filter((q) => q && q.length > 2))];
+  }
+
+  function buildOut(rel) {
+    if (rel.is_blocked_by_geo || rel.is_blocked_by_copyrights) return { blocked: true };
+    const episodes = (rel.episodes || [])
+      .map((e) => ({
+        ordinal: e.ordinal,
+        name: e.name,
+        duration: e.duration,
+        hls: { 1080: e.hls_1080, 720: e.hls_720, 480: e.hls_480 },
+      }))
+      .filter((e) => e.hls[1080] || e.hls[720] || e.hls[480])
+      .sort((a, b) => a.ordinal - b.ordinal);
+    return { release: { id: rel.id, name: rel.name && rel.name.main }, episodes };
   }
 
   window.Libria = {
@@ -147,31 +166,25 @@
       if (!mal) return null;
       if (cache.has(mal)) return cache.get(mal);
 
-      let hit = null;
-      for (const q of queries(m)) {
-        const r = await json("/app/search/releases?query=" + encodeURIComponent(q));
-        const list = Array.isArray(r) ? r : r.data || [];
-        hit = list.find((x) => idsOf(x).includes(mal));
-        if (hit) break;
-      }
-
       let out = null;
-      if (hit) {
-        if (hit.is_blocked_by_geo || hit.is_blocked_by_copyrights) {
-          out = { blocked: true };
-        } else {
-          const rel = await json("/anime/releases/" + hit.id);
-          const episodes = (rel.episodes || [])
-            .map((e) => ({
-              ordinal: e.ordinal,
-              name: e.name,
-              duration: e.duration,
-              hls: { 1080: e.hls_1080, 720: e.hls_720, 480: e.hls_480 },
-            }))
-            .filter((e) => e.hls[1080] || e.hls[720] || e.hls[480])
-            .sort((a, b) => a.ordinal - b.ordinal);
-          out = { release: { id: rel.id, name: rel.name && rel.name.main }, episodes };
+      const mapped = (window.APP_CONFIG.LIBRIA_MAP || {})[mal];
+      if (mapped) {
+        // ручное соответствие из config.js: берём релиз напрямую
+        out = buildOut(await json("/anime/releases/" + encodeURIComponent(mapped)));
+      } else {
+        // русское название с Shikimori, но не дольше 2,5 с: без VPN этот сайт может не открываться
+        const ru = await Promise.race([
+          Api.russian(mal).then((r) => r && r.name).catch(() => null),
+          new Promise((r) => setTimeout(() => r(null), 2500)),
+        ]);
+        let hit = null;
+        for (const q of queries(m, ru)) {
+          const r = await json("/app/search/releases?query=" + encodeURIComponent(q));
+          const list = Array.isArray(r) ? r : r.data || [];
+          hit = list.find((x) => idsOf(x).includes(mal));
+          if (hit) break;
         }
+        if (hit) out = buildOut(hit.is_blocked_by_geo || hit.is_blocked_by_copyrights ? hit : await json("/anime/releases/" + hit.id));
       }
       cache.set(mal, out); // ошибки сети не кэшируем: они вылетают выше
       return out;
