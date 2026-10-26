@@ -343,6 +343,38 @@
     return hlsLoading;
   }
 
+  // ---------- Резервный плеер: Kodik REST API ----------
+  // Возвращает адрес плеера с заменённым доменом либо null, если Kodik ничего не знает об этом аниме или не ответил.
+  const kodikCache = new Map();
+  async function getKodikLink(shikimoriId) {
+    const R = cfg.RESERVE || {};
+    if (!R.enabled || !R.api || !R.token || !shikimoriId) return null;
+    if (kodikCache.has(shikimoriId)) return kodikCache.get(shikimoriId);
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), R.timeoutMs || 8000);
+    try {
+      const url = `${R.api}?token=${encodeURIComponent(R.token)}&shikimori_id=${encodeURIComponent(shikimoriId)}`;
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const link = data && Array.isArray(data.results) && data.results[0] && data.results[0].link;
+      if (!link) {
+        kodikCache.set(shikimoriId, null); // «нет такого аниме» запоминаем, сбои сети нет
+        return null;
+      }
+      // ссылка приходит вида //kodik.info/video/...: меняем заблокированный домен на настроенный
+      const host = String(R.host || "https://kodik.cc/").replace(/\/?$/, "/");
+      const secureLink = String(link).replace(/^(https?:)?\/\/[^/]+\//, host);
+      if (!/^https:\/\//.test(secureLink)) return null;
+      kodikCache.set(shikimoriId, secureLink);
+      return secureLink;
+    } catch (e) {
+      return null;
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
   async function pageWatch(id, epParam) {
     loading();
     const m = await Api.detail(id);
@@ -368,16 +400,8 @@
     const overlay = (text) => { if (box.isConnected) box.insertAdjacentHTML("beforeend", `<div class="player-note">${esc(text)}</div>`); };
 
     const trailerId = m.trailer && String(m.trailer.site).toLowerCase() === "youtube" && /^[\w-]{6,20}$/.test(m.trailer.id) ? m.trailer.id : null;
-    const fill = (tpl, vars) => String(tpl || "").replace(/\{(\w+)\}/g, (_, k) => encodeURIComponent(vars[k] == null ? "" : vars[k]));
     const R = cfg.RESERVE || {};
-    // базы резерва с подстановкой {shikimori_id}, {anilist_id}, {title}
-    const reserveSrc = R.enabled && m.idMal
-      ? (R.sources || [])
-          .filter((x) => x && /^https:\/\//.test(x.url))
-          .map((x) => ({ name: x.name || "Источник", url: fill(x.url, { shikimori_id: m.idMal, anilist_id: m.id, title: Api.title(m) }) }))
-      : [];
-    const reserveUrl = reserveSrc[0] ? reserveSrc[0].url : null;
-    let mirror = 0;
+    const reserveOn = !!(R.enabled && m.idMal);
 
     // ступень 1: AniLibria, прямой поток m3u8 (умный поиск и ручная карта внутри Libria.find)
     let found = null;
@@ -403,7 +427,7 @@
     function drawTabs() {
       const tabs = [
         [1, "Источник 1 (AniLibria)", !found],
-        [2, "Источник 2 (Резерв)", !reserveUrl],
+        [2, "Источник 2 (Резерв)", !reserveOn],
         [3, "Трейлер", false],
       ];
       srcBar.hidden = false;
@@ -422,19 +446,18 @@
       if (n === 1) {
         if (found) return startNative();
         $("#epTitle").textContent = "Источник 1";
-        note(reason + (reserveUrl ? " Попробуй «Источник 2»." : ""));
+        note(reason + (reserveOn ? " Попробуй «Источник 2»." : ""));
               } else if (n === 2) {
         $("#epTitle").textContent = "Резервный плеер";
-        if (!reserveUrl) {
-          note("Резервный плеер не настроен.");
-        } else {
-          // права рамки из конфига (по умолчанию scripts + same-origin + forms); пустая строка в sandbox убирает ограничения полностью
+        if (!reserveOn) return note("Резервный плеер не настроен.");
+        note("Ищу плеер…");
+        getKodikLink(m.idMal).then((link) => {
+          if (tab !== 2 || !box.isConnected) return; // пока искали, вкладку или страницу сменили
+          if (!link) return note("Плеер временно недоступен");
+          // права рамки из конфига; пустая строка в sandbox убирает ограничения полностью
           const sb = R.sandbox === "" ? "" : ` sandbox="${esc(R.sandbox || "allow-scripts allow-same-origin allow-forms allow-presentation")}"`;
-          box.innerHTML = `<iframe src="${esc(reserveSrc[mirror].url)}" title="Резервный плеер"${sb} allowfullscreen="true" allow="autoplay *; fullscreen *" referrerpolicy="no-referrer"></iframe>`;
-        }
-        epsBox.innerHTML = reserveSrc.length > 1
-          ? `<div class="alt-links" role="group" aria-label="База резервного плеера">${reserveSrc.map((x, i) => `<button type="button" class="chip ${i === mirror ? "on" : ""}" data-mirror="${i}">${esc(x.name)}</button>`).join("")}</div><p class="muted" style="max-width:70ch">Если плеер чёрный, пишет ошибку или просит токен, выбери другую базу.</p>`
-          : "";
+          box.innerHTML = `<iframe src="${esc(link)}" title="Резервный плеер"${sb} allowfullscreen="true" allow="autoplay *; fullscreen *" referrerpolicy="no-referrer"></iframe>`;
+        });
       } else {
         $("#epTitle").textContent = "Трейлер";
         if (trailerId) {
@@ -444,10 +467,6 @@
         }
       }
     }
-    epsBox.addEventListener("click", (ev) => {
-      const b = ev.target.closest("[data-mirror]");
-      if (b && tab === 2) { mirror = Number(b.dataset.mirror); setTab(2); }
-    });
     srcBar.onclick = (ev) => {
       const b = ev.target.closest("[data-t]");
       if (b && Number(b.dataset.t) !== tab) setTab(Number(b.dataset.t));
@@ -575,7 +594,7 @@
     select(idx, { autoplay: true });
     }
 
-    setTab(found ? 1 : reserveUrl ? 2 : 3);
+    setTab(found ? 1 : reserveOn ? 2 : 3);
   }
 
   function pageLibrary(params) {

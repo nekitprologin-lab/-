@@ -19,17 +19,16 @@ window.APP_CONFIG = {
   // Важно: в AniLibria есть не всё. Например, «Атаки титанов» там нет вообще, и карта тут не поможет.
   LIBRIA_MAP: {},
 
-  // Источник 2 (резерв): сторонние плееры внутри нашего окна. Над плеером появятся кнопки по названиям ниже:
-  // если одна база заблокирована или просит токен, переключись на другую.
-  // В адресах подставляются {shikimori_id} (= номер MyAnimeList), {anilist_id} и {title}.
-  // sandbox: права рамки. Если плеер уходит в чёрный экран, поставь sandbox: "" (рамка без ограничений).
+  // Источник 2 (резерв): ссылка на плеер ищется через Kodik REST API по номеру Shikimori (= номеру MyAnimeList).
+  // host: Kodik отдаёт ссылки на домен kodik.info, который у многих провайдеров закрыт, поэтому домен подменяется
+  // (можно поставить "https://kodik.biz/"). token: токен API (публичный, лежит в открытом коде сайта).
+  // sandbox: права рамки; если плеер уходит в чёрный экран, поставь "" (рамка без ограничений).
   RESERVE: {
     enabled: true,
+    api: "https://kodikapi.com/search",
+    token: "8f828a2a87a8b139c2794ebf32b842de",
+    host: "https://kodik.cc/",
     sandbox: "allow-scripts allow-same-origin allow-forms allow-presentation",
-    sources: [
-      { name: "Kodik (теневой)", url: "https://aniqit.com/player?shikimoriID={shikimori_id}" },
-      { name: "Collaps", url: "https://api.strvid.ws/embed/shikimori/{shikimori_id}" },
-      { name: "Универсальный", url: "https://yohoho.cc/?shikimori={shikimori_id}" },
-    ],
+    timeoutMs: 8000,
   },
 };
