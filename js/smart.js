@@ -38,7 +38,8 @@
     [["Thriller"], [], ["триллер", "напряжен", "thriller"]],
     [[], ["School"], ["школ", "учени", "урок", "школьн", "school", "академи"]],
     [[], ["Isekai"], ["исекай", "другой мир", "другом мире", "другой мире", "isekai", "попал в мир", "попаданц"]],
-    [[], ["Time Travel"], ["путешествия во времени", "путешествие во времени", "путешествий во времени", "машина времени", "машины времени", "петля времени", "time travel", "временн"]],
+    [[], ["Time Manipulation"], ["путешествия во времени", "путешествие во времени", "путешествий во времени", "машина времени", "машины времени", "time travel", "временн", "про время"]],
+    [[], ["Time Loop"], ["петля времени", "петли времени", "петлю времени", "time loop", "временная петля", "временной петл"]],
     [[], ["Military"], ["военн", "армия", "армии", "солдат", "military"]],
     [[], ["Vampire"], ["вампир", "vampire"]],
     [[], ["Demons"], ["демон", "demon"]],
@@ -54,10 +55,10 @@
     [[], ["Politics"], ["политик", "politics"]],
     [[], ["War"], ["война", "войны", "войне", "войну", " war"]],
     [[], ["Idol"], ["идол", "idol"]],
-    [[], ["Cooking"], ["кулинар", "готовк", "повар", "cooking", "рестора"]],
+    [[], ["Food"], ["кулинар", "готовк", "повар", "cooking", "рестора", "еда", "еде", "food"]],
     [[], ["Coming of Age"], ["взросление", "взрослени", "coming of age"]],
     [[], ["Anti-Hero"], ["антигер", "anti hero", "antihero"]],
-    [[], ["Workplace"], ["офис", "работа в", "workplace"]],
+    [[], ["Office"], ["офис", "workplace"]],
     [[], ["Martial Arts"], ["боевые искусства", "боевых искусств", "кунг-фу", "кунг фу", "карате", "martial arts"]],
     [[], ["Swordplay"], ["мечник", "мечами", "мечей", "фехтован", "swordplay"]],
     [[], ["Video Games"], ["видеоигр", "компьютерн игр", "video game"]],
@@ -76,17 +77,41 @@
     [[], ["Superhero"], ["супергеро", "superhero"]],
     [[], ["Boys' Love"], ["яой", "бой лав", "boys love", "boys' love"]],
     [[], ["Yuri"], ["юри", "yuri"]],
-    [[], ["Harem"], ["гарем", "harem"]],
+    [[], ["Female Harem"], ["гарем", "harem"]],
     [[], ["Revenge"], ["месть", "мести", "мстит", "revenge"]],
-    [[], ["Friendship"], ["дружб", "друзья", "друзей", "friendship"]],
+    
     [[], ["Family Life"], ["семейн", "семья", "семье", "семьи", "family"]],
     [[], ["Bullying"], ["буллинг", "травля", "травли", "bullying"]],
     [[], ["Conspiracy"], ["заговор", "conspiracy"]],
-    [[], ["Heist"], ["ограблен", "heist"]],
+    [[], ["Crime"], ["ограблен", "heist", "преступлен", "криминал", "мафи", "gangster", "гангстер", "crime"]],
     [[], ["Dragons"], ["дракон", "dragon"]],
     [[], ["Zombie"], ["зомби", "zombie"]],
     [[], ["Alchemy"], ["алхими", "alchemy"]],
     [[], ["Band"], ["музыкальная групп", "рок групп", "band"]],
+    [[], ["Board Game"], ["шахмат", "настольн игр", "board game", "chess"]],
+    [[], ["Shogi"], ["сёги", "шоги", "shogi"]],
+    [[], ["Mahjong"], ["маджонг", "mahjong"]],
+    [["Sports"], ["Baseball"], ["бейсбол", "baseball"]],
+    [["Sports"], ["Boxing"], ["бокс", "boxing"]],
+    [["Sports"], ["Golf"], ["гольф", "golf"]],
+    [["Sports"], ["Wrestling"], ["рестлинг", "борьб"]],
+    [["Sports"], ["Ice Sports"], ["хоккей", "фигурное катание", "фигурного катания", "ice skating"]],
+    [["Sports"], ["Table Tennis"], ["настольный теннис", "настольного тенниса", "пинг-понг", "table tennis"]],
+    [[], ["E-Sports"], ["киберспорт", "esports", "e-sports"]],
+    [[], ["Card Battle"], ["карточн", "card battle"]],
+    [[], ["Crime"], ["криминал"]],
+    [[], ["Cute Girls Doing Cute Things"], ["милые девочки", "милых девочек", "моэ", "кавайн", "moe", "cute girls"]],
+    [[], ["Tsundere"], ["цундере", "tsundere"]],
+    [[], ["Yandere"], ["яндере", "yandere"]],
+    [[], ["Kids"], ["детск", "для детей", "kids"]],
+    [[], ["Steampunk"], ["стимпанк", "steampunk"]],
+    [[], ["Aliens"], ["инопланетян", "пришельц", "alien"]],
+    [[], ["Chuunibyou"], ["тюнибё", "чуунибё", "чунибё", "chuunibyou"]],
+    [[], ["Death Game"], ["смертельн игр", "игра на выживание", "игры на выживание", "death game"]],
+    [[], ["Space Opera"], ["космоопер", "space opera"]],
+    [[], ["Unrequited Love"], ["безответн", "unrequited"]],
+    [[], ["Cars"], ["гонки", "гонок", "автомобил", "racing"]],
+    [[], ["Steampunk"], ["паропанк"]],
   ];
 
   const FORMATS = [
@@ -212,5 +237,9 @@
       .map((x) => x[1]);
   }
 
-  window.Smart = { norm, parse, stem, taste, baseTitle, tasteScore, rank };
+  // Названия тегов, которых нет в AniList (их использует и промпт Worker): заменяем на настоящие
+  const TAG_FIX = { "Time Travel": "Time Manipulation", "Cooking": "Food", "Workplace": "Office", "Harem": "Female Harem", "Heist": "Crime", "Friendship": null };
+  const fixTags = (arr) => [...new Set((arr || []).map((t) => (t in TAG_FIX ? TAG_FIX[t] : t)).filter(Boolean))];
+
+  window.Smart = { fixTags, norm, parse, stem, taste, baseTitle, tasteScore, rank };
 })();

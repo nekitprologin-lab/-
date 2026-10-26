@@ -372,7 +372,7 @@
       // правила не сработали (или ничего не нашли): разбор запроса ИИ
       const ai = await aiPlan(q);
       if (!ai) return plan ? { plan, items: [] } : null;
-      plan = { ...ai, src: "ai" };
+      plan = { ...ai, tags: S ? S.fixTags(ai.tags) : ai.tags, src: "ai" };
       const jobs = [];
       if (ai.similar_to) jobs.push(recsOf(ai.similar_to));
       else if ((ai.titles || []).length && nWords <= 3)
