@@ -38,7 +38,7 @@
         ${lib && lib.liked ? `<span class="heart" title="Нравится">♥</span>` : ""}
         ${pct ? `<span class="bar"><i style="width:${pct}%"></i></span>` : ""}
       </div>
-      <div class="name">${esc(Api.title(m))}</div>
+      <div class="name" data-mal="${esc(m.idMal || "")}">${esc(Api.title(m))}</div>
       <div class="sub">${esc(sub)}</div>
     </a>`;
   }
@@ -53,7 +53,7 @@
         ${r.liked ? `<span class="heart">♥</span>` : ""}
         ${pct ? `<span class="bar"><i style="width:${pct}%"></i></span>` : ""}
       </div>
-      <div class="name">${esc(r.title)}</div>
+      <div class="name" data-mal="${esc(r.mal_id || "")}">${esc(Api.ruByMal(r.mal_id) || r.title)}</div>
       <div class="sub">${esc(extra || "")}</div>
     </a>`;
   }
@@ -146,7 +146,12 @@
     if (hero) {
       Api.detail(hero.id).then((d) => {
         const p = $(".hero p");
-        if (p && d) p.textContent = (d.description || "").replace(/<[^>]*>/g, "");
+        if (!p || !d) return;
+        const en = (d.description || "").replace(/<[^>]*>/g, "");
+        p.textContent = en;
+        // в шапке влезает три строки: переводим только начало, это быстрее
+        const head = en.length > 420 ? en.slice(0, 420).replace(/[^.!?…]*$/, "") || en.slice(0, 420) : en;
+        Api.translate(head, "h" + d.id).then((ru) => { if (ru && $(".hero p")) $(".hero p").textContent = ru; });
       }).catch(() => {});
     }
 
@@ -254,8 +259,8 @@
       <div class="wrap detail-body">
         <img class="cover" src="${esc(m.coverImage && m.coverImage.large)}" alt="">
         <div>
-          <h1>${esc(Api.title(m))}</h1>
-          <div class="alt" id="ru">${m.title.romaji !== Api.title(m) ? esc(m.title.romaji) : ""}</div>
+          <h1 id="h1">${esc(Api.title(m))}</h1>
+          <div class="alt" id="ru">${esc([Api.altTitle(m), m.title.romaji].filter((x, i, a) => x && x !== Api.title(m) && a.indexOf(x) === i).join(" · "))}</div>
           <div class="meta">
             ${m.averageScore ? `<span><b>${(m.averageScore / 10).toFixed(1)}</b> оценка</span>` : ""}
             ${m.seasonYear ? `<span>${m.seasonYear}</span>` : ""}
@@ -283,11 +288,25 @@
       </div>
     </div>`;
 
-    // русское название и описание подтягиваются, если Shikimori доступен
-    Api.russian(m.idMal).then((r) => {
-      if (!r || !$("#ru")) return;
-      if (r.name) $("#ru").textContent = r.name;
-      if (r.description) $("#desc").textContent = r.description;
+    // русское название и описание: с Shikimori, если он доступен; иначе описание переводится автоматически
+    const showDesc = (text, auto) => {
+      const d = $("#desc");
+      if (!d) return;
+      d.textContent = text;
+      if (auto) d.insertAdjacentHTML("beforeend", `<div class="muted" style="font-size:12px;margin-top:8px">Автоматический перевод</div>`);
+    };
+    Api.russian(m.idMal).then(async (r) => {
+      if (!$("#h1")) return;
+      if (r && r.name) {
+        $("#h1").textContent = r.name;
+        const alt = [Api.altTitle(m), m.title.romaji].filter((x, i, a) => x && x !== r.name && a.indexOf(x) === i).join(" · ");
+        if ($("#ru")) $("#ru").textContent = alt;
+      }
+      if (r && r.description) return showDesc(r.description, false);
+      if (m.description) {
+        const ru = await Api.translate(m.description, "d" + m.id);
+        if (ru && $("#desc")) showDesc(ru, true);
+      }
     });
 
     const needLogin = () => { toast("Сначала войди"); location.hash = "#/login"; };
@@ -831,6 +850,17 @@
     location.hash = q ? "#/search?q=" + encodeURIComponent(q) : "#/search";
     $("#navQ").blur();
   };
+
+  // Если для карточки нет русского названия, пробуем подтянуть его с Shikimori (когда он доступен)
+  let nameTimer = null;
+  function localizeNames() {
+    const els = [...app.querySelectorAll(".name[data-mal]")].filter((el) => el.dataset.mal && !Api.hasCyrillic(el.textContent));
+    if (!els.length) return;
+    const apply = () => els.forEach((el) => { const ru = Api.ruByMal(el.dataset.mal); if (ru && el.isConnected) el.textContent = ru; });
+    apply();
+    Api.ruBatch(els.map((el) => el.dataset.mal)).then(apply);
+  }
+  new MutationObserver(() => { clearTimeout(nameTimer); nameTimer = setTimeout(localizeNames, 250); }).observe(app, { childList: true, subtree: true });
 
   window.addEventListener("hashchange", route);
   Store.init().catch((e) => toast(e.message)).finally(route);
