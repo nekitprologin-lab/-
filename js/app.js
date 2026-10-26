@@ -1058,7 +1058,6 @@
     probe("Jikan / MyAnimeList (поиск)", (sg) => fetch("https://api.jikan.moe/v4/anime?q=torad&limit=2", { signal: sg }));
     probe("AniLibria (поиск)", (sg) => fetch("https://anilibria.top/api/v1/app/search/releases?query=torad", { signal: sg }));
     if (W) {
-      probe("Worker: AniList через прокси", (sg) => fetch(wk("?al=1&q=" + encodeURIComponent(gq) + "&v=%7B%7D"), { signal: sg }));
       probe("Worker: перевод описаний", (sg) => fetch(wk("?tr=Attack%20on%20Titan&sl=en&tl=ru"), { signal: sg }));
       probe("Worker: умный поиск (ИИ)", (sg) => fetch(wk("?ai=" + encodeURIComponent("торадора")), { signal: sg }));
       probe("Worker: плеер Kodik", (sg) => fetch(wk("?id=16498"), { signal: sg }));

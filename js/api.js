@@ -173,10 +173,6 @@
     (Array.isArray(r) ? r : []).forEach((x) => setRu(x.id, x.russian));
   }
 
-  const PX_KEY = "tsukimi:alproxy:down";
-  let proxyDownUntil = 0;
-  try { proxyDownUntil = Number(localStorage.getItem(PX_KEY)) || 0; } catch (e) {}
-  const proxyOff = (ms) => { proxyDownUntil = Date.now() + ms; try { localStorage.setItem(PX_KEY, String(proxyDownUntil)); } catch (e) {} };
   async function gql(query, variables) {
     const key = JSON.stringify([query, variables]);
     if (cache.has(key)) return cache.get(key);
@@ -186,25 +182,12 @@
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 12000);
       try {
-        // сначала через наш Worker (он открывается там, где AniList закрыт, и кэширует ответы), при сбое — напрямую
-        let res = null;
-        const w = (window.APP_CONFIG || {}).WORKER_URL;
-        if (w && Date.now() >= proxyDownUntil) {
-          try {
-            const pu = w.replace(/\/$/, "") + "/?al=1&q=" + encodeURIComponent(query) + "&v=" + encodeURIComponent(JSON.stringify(variables || {}));
-            res = await fetch(pu, { signal: ctrl.signal });
-            // любой неуспех прокси (AniList банит адреса Cloudflare: 403, 429, 5xx) — идём напрямую, а прокси на полчаса отключаем
-            if (!res.ok) { proxyOff(res.status === 403 ? 6 * 3600000 : 30 * 60000); res = null; }
-          } catch (e) { proxyOff(60000); res = null; }
-        }
-        if (!res) {
-          res = await fetch(URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Accept: "application/json" },
-            body: JSON.stringify({ query, variables }),
-            signal: ctrl.signal,
-          });
-        }
+        const res = await fetch(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ query, variables }),
+          signal: ctrl.signal,
+        });
         clearTimeout(timer);
         if (res.status === 429 || res.status >= 500) {
           const wait = Math.min(8, Number(res.headers && res.headers.get && res.headers.get("Retry-After")) || 2 * (attempt + 1));
