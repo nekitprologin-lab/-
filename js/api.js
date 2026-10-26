@@ -270,6 +270,63 @@
   }
   idxLoad();
 
+  // ---------- умный поиск (ИИ во втором слое) ----------
+  // Worker превращает запрос в параметры AniList (названия, жанры, теги, год), а искать продолжает сам AniList: покрыт весь каталог.
+  const aiCache = new Map();
+  async function aiPlan(q) {
+    const k = q.trim().toLowerCase();
+    const w = (window.APP_CONFIG || {}).WORKER_URL;
+    if (!k || !w) return null;
+    if (aiCache.has(k)) return aiCache.get(k);
+    try {
+      const plan = await timed(w.replace(/\/$/, "") + "/?ai=" + encodeURIComponent(q.trim()), 9000);
+      if (!plan || plan.error) return null;
+      aiCache.set(k, plan);
+      return plan;
+    } catch (e) { return null; }
+  }
+  const AI_Q = `query($s:String,$g:[String],$t:[String],$y:Int,$f:MediaFormat){Page(perPage:18){media(type:ANIME,isAdult:false,search:$s,genre_in:$g,tag_in:$t,seasonYear:$y,format:$f,sort:POPULARITY_DESC){ ${LITE} }}}`;
+  async function aiSearch(q) {
+    const plan = await aiPlan(q);
+    if (!plan) return null;
+    const jobs = [];
+    // 1. названия (в том числе исправленные опечатки и транслит)
+    (plan.titles || []).slice(0, 3).forEach((t) => jobs.push(gql(AI_Q, { s: t }).then((d) => d.Page.media.slice(0, 4)).catch(() => [])));
+    // 2. «похожее на X»
+    if (plan.similar_to) {
+      jobs.push(
+        gql(`query($s:String){Media(search:$s,type:ANIME){ recommendations(sort:RATING_DESC,perPage:14){nodes{mediaRecommendation{ ${LITE} }}}}}`, { s: plan.similar_to })
+          .then((d) => (d.Media.recommendations.nodes || []).map((n) => n.mediaRecommendation).filter(Boolean)).catch(() => [])
+      );
+    }
+    // 3. жанры и теги: если ничего не нашлось, по шагам ослабляем условия
+    const g = plan.genres || [], t = plan.tags || [];
+    if (g.length || t.length || plan.year) {
+      jobs.push((async () => {
+        const tries = [
+          { g, t, y: plan.year, f: plan.format },
+          { g, t, y: plan.year },
+          { g, t },
+          { g: g.slice(0, 2), t: t.slice(0, 1) },
+          { g: g.slice(0, 1), t: t.slice(0, 1) },
+          { t: t.slice(0, 2) },
+          { g: g.slice(0, 2) },
+        ];
+        for (const v of tries) {
+          const vars = { g: v.g && v.g.length ? v.g : undefined, t: v.t && v.t.length ? v.t : undefined, y: v.y || undefined, f: v.f || undefined };
+          if (!vars.g && !vars.t && !vars.y) continue;
+          const items = await gql(AI_Q, vars).then((d) => d.Page.media).catch(() => []);
+          if (items.length) return items;
+        }
+        return [];
+      })());
+    }
+    const lists = await Promise.all(jobs);
+    const seen = new Set();
+    const items = lists.flat().filter((m) => m && !seen.has(m.id) && seen.add(m.id)).slice(0, 18);
+    return { plan, items };
+  }
+
   const PAGE_Q = `query($page:Int,$perPage:Int,$search:String,$genres:[String],$year:Int,$sort:[MediaSort],$season:MediaSeason,$ids:[Int],$mals:[Int]){
     Page(page:$page,perPage:$perPage){
       pageInfo{hasNextPage}
@@ -349,6 +406,7 @@
       return { items: [...more.items.filter((m) => add.includes(m)), ...base.items, ...byEn.items.filter((m) => add.includes(m))], hasNext: base.hasNext };
     },
     localSearch,
+    aiSearch,
     idxWarm,
     // подсказки при вводе: короткий запрос, результат запоминается по тексту
     _sg: new Map(),

@@ -50,6 +50,44 @@ export default {
       return new Response(await r.text(), { status: r.status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400", ...headers } });
     }
 
+    // Умный поиск: ?ai=запрос (любой язык) -> параметры для AniList. Работает на Workers AI, ответ кэшируется на неделю.
+    const aiq = new URL(request.url).searchParams.get("ai");
+    if (aiq) {
+      if (!env.AI) return json({ error: "ai not configured" }, 501, headers);
+      const text = aiq.trim().slice(0, 200);
+      const cache = caches.default;
+      const ckey = new Request("https://ai.cache/" + encodeURIComponent(text.toLowerCase()));
+      const hit = await cache.match(ckey);
+      if (hit) return new Response(hit.body, { status: 200, headers: { "Content-Type": "application/json; charset=utf-8", ...headers } });
+      const GENRES = ["Action", "Adventure", "Comedy", "Drama", "Ecchi", "Fantasy", "Horror", "Mahou Shoujo", "Mecha", "Music", "Mystery", "Psychological", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural", "Thriller"];
+      const TAGS = ["School", "Tragedy", "Isekai", "Time Travel", "Magic", "Military", "Vampire", "Demons", "Gore", "Parody", "Love Triangle", "Female Protagonist", "Male Protagonist", "Super Power", "Samurai", "Detective", "Survival", "Reincarnation", "Cyberpunk", "Space", "Post-Apocalyptic", "Politics", "War", "Idol", "Cooking", "Iyashikei", "Coming of Age", "Anti-Hero", "Workplace", "Martial Arts", "Swordplay", "Video Games", "Virtual World", "Philosophy", "Dystopian", "Mythology", "Historical", "Shounen", "Seinen", "Josei", "Shoujo", "Ghost", "Monster Girl", "Robots", "Pirates", "Ninja", "Superhero", "Boys' Love", "Yuri", "Harem", "Revenge", "Friendship", "Family Life", "Bullying", "Cult", "Conspiracy", "Heist", "Dragons", "Zombie", "Alchemy", "Writing", "Band", "Basketball", "Football", "Volleyball", "Tennis", "Swimming"];
+      const sys = "You convert an anime search request (any language, may contain typos) into JSON for the AniList API. Reply with ONLY one JSON object: " +
+        '{"titles":[],"similar_to":null,"genres":[],"tags":[],"year":null,"format":null}. ' +
+        "titles: up to 3 official English or romaji titles if the user names or misspells specific anime, else []. " +
+        "similar_to: the title of an anime if the user asks for something similar to it, else null. " +
+        "genres: 0-3 values ONLY from: " + GENRES.join(", ") + ". tags: 0-3 values ONLY from: " + TAGS.join(", ") + ". " +
+        'year: number or null. format: "TV", "MOVIE", "OVA" or null. Do not explain.';
+      const run = (model) => env.AI.run(model, { messages: [{ role: "system", content: sys }, { role: "user", content: text }], max_tokens: 140, temperature: 0 });
+      let out;
+      try { out = await run("@cf/meta/llama-3.1-8b-instruct-fast"); }
+      catch (e) { try { out = await run("@cf/meta/llama-3.2-3b-instruct"); } catch (e2) { return json({ error: "ai failed" }, 502, headers); } }
+      const raw = typeof out.response === "string" ? out.response : JSON.stringify(out.response || {});
+      let plan = {};
+      try { plan = JSON.parse((raw.match(/\{[\s\S]*\}/) || ["{}"])[0]); } catch (e) {}
+      const arr = (v, allowed, n) => (Array.isArray(v) ? v : []).map(String).filter((x) => !allowed || allowed.includes(x)).slice(0, n);
+      const clean = {
+        titles: arr(plan.titles, null, 3),
+        similar_to: typeof plan.similar_to === "string" && plan.similar_to ? plan.similar_to.slice(0, 80) : null,
+        genres: arr(plan.genres, GENRES, 3),
+        tags: arr(plan.tags, TAGS, 3),
+        year: Number.isInteger(plan.year) && plan.year > 1960 && plan.year < 2100 ? plan.year : null,
+        format: ["TV", "MOVIE", "OVA"].includes(plan.format) ? plan.format : null,
+      };
+      const body = JSON.stringify(clean);
+      try { await cache.put(ckey, new Response(body, { headers: { "Cache-Control": "public, max-age=604800" } })); } catch (e) {}
+      return new Response(body, { status: 200, headers: { "Content-Type": "application/json; charset=utf-8", ...headers } });
+    }
+
     // Перевод: ?tr=текст&sl=en&tl=ru. Основной путь — Workers AI (модель m2m100, привязка AI), запасной — Google.
     // Google блокирует адреса Cloudflare, поэтому без привязки AI перевод может не работать.
     const tr = new URL(request.url).searchParams.get("tr");

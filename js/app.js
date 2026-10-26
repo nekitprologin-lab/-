@@ -200,19 +200,36 @@
       </form>
       <div class="chips genre-row" id="genres">${Api.GENRES.map((g) => `<button type="button" class="chip ${g === state.genre ? "on" : ""}" data-genre="${esc(g)}">${esc(Api.genreRu(g))}</button>`).join("")}</div>
       <div id="results"></div>
+      <div id="aiBox"></div>
     </div>`;
     $("select[name=sort]").value = state.sort;
     const results = $("#results");
     const input = $("input[name=q]");
     if (!state.q) input.focus();
 
-    let seq = 0, timer = null, shown = "";
+    let seq = 0, timer = null, shown = "", shownIds = new Set(), aiSeq = 0;
+    const aiBox = $("#aiBox");
+    // второй слой: ИИ разбирает запрос (опечатки, смысл, жанры) и подбирает из всего каталога AniList
+    async function runAI(q, mySeq) {
+      const my = ++aiSeq;
+      aiBox.innerHTML = `<div class="ai-wait"><i></i>Подбираю по смыслу…</div>`;
+      const r = await Api.aiSearch(q).catch(() => null);
+      if (my !== aiSeq || mySeq !== seq) return;
+      const items = r ? r.items.filter((m) => !shownIds.has(m.id)) : [];
+      if (!items.length) { aiBox.innerHTML = ""; return; }
+      const pl = r.plan;
+      const chips = [...(pl.genres || []).map(Api.genreRu), ...(pl.tags || []), pl.year ? String(pl.year) : "", pl.similar_to ? "похоже на " + pl.similar_to : ""].filter(Boolean);
+      aiBox.innerHTML = `<section class="ai-block"><div class="ai-head"><h2>Возможно, ты искал</h2>${chips.length ? `<div class="ai-tags">${chips.map((c) => `<span class="chip">${esc(c)}</span>`).join("")}</div>` : ""}</div>
+        <div class="grid">${items.map((m, i) => stag(card(m), i)).join("")}</div></section>`;
+    }
+    const words = (q) => q.split(/\s+/).filter(Boolean).length;
     const skeleton = () => `<div class="grid">${Array.from({ length: 12 }, () => `<div class="card sk"><div class="poster"></div><div class="name"></div><div class="sub"></div></div>`).join("")}</div>`;
     // не перерисовываем, если список тот же (иначе карточки мигают)
     function paint(items, hasNext) {
       const key = items.map((m) => m.id).join(",");
       if (key === shown && !results.querySelector(".sk")) return;
       shown = key;
+      shownIds = new Set(items.map((m) => m.id));
       results.classList.remove("busy");
       if (!items.length) { results.innerHTML = `<div class="empty">Ничего не нашлось. Попробуй часть названия или сними фильтры.</div>`; return; }
       results.innerHTML = `<div class="grid">${items.map((m, i) => stag(card(m), i)).join("")}</div>`;
@@ -232,6 +249,12 @@
     }
     async function run(append) {
       const my = ++seq;
+      let aiStarted = false;
+      if (!append) {
+        aiSeq++; aiBox.innerHTML = "";
+        // длинный запрос, похожий на описание: ИИ стартует сразу, параллельно с обычным поиском
+        if (state.q.length >= 3 && words(state.q) >= 3 && !state.genre && !state.year && !state.sort) { aiStarted = true; runAI(state.q, my); }
+      }
       if (!append && !paintLocal()) {
         if (!results.querySelector(".grid .card:not(.sk)")) results.innerHTML = skeleton(); else results.classList.add("busy");
         shown = "";
@@ -244,7 +267,11 @@
           const old = $(".more", results); if (old) old.remove();
           grid.insertAdjacentHTML("beforeend", r.items.map((m, i) => stag(card(m), i)).join(""));
           if (r.hasNext) { results.insertAdjacentHTML("beforeend", `<button class="btn more">Показать ещё</button>`); $(".more", results).onclick = () => { state.page++; run(true); }; }
-        } else paint(r.items, r.hasNext);
+        } else {
+          paint(r.items, r.hasNext);
+          // обычный поиск почти ничего не нашёл: подключаем ИИ
+          if (!aiStarted && state.q.length >= 3 && r.items.length < 3 && !state.genre && !state.year && !state.sort) runAI(state.q, my);
+        }
       } catch (e) {
         if (my !== seq) return;
         results.classList.remove("busy");

@@ -439,3 +439,11 @@ h2 { font-size: 22px; font-weight: 600; }
 .card.sk .sub { width: 45%; margin-top: 8px; }
 .card.in { animation: cardin .5s var(--ease) backwards; animation-delay: calc(var(--i) * 28ms); }
 .card.sk:hover { transform: none; }
+
+/* ---------- умный поиск ---------- */
+.ai-block { margin-top: 44px; padding-top: 28px; border-top: 1px solid var(--line); }
+.ai-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin-bottom: 18px; }
+.ai-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-tags .chip { cursor: default; padding: 3px 11px; font-size: 12.5px; }
+.ai-wait { display: flex; align-items: center; gap: 10px; margin-top: 26px; color: var(--muted); font-size: 14px; }
+.ai-wait i { width: 14px; height: 14px; border-radius: 50%; background: var(--moon); box-shadow: inset -5px 0 0 0 #000; animation: spin 1s linear infinite; }
