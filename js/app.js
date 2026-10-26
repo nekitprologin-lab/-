@@ -371,8 +371,14 @@
     const fill = (tpl, vars) => String(tpl || "").replace(/\{(\w+)\}/g, (_, k) => encodeURIComponent(vars[k] == null ? "" : vars[k]));
     const L = cfg.LINKS || {};
     const R = cfg.RESERVE || {};
-    const reserveUrl = R.enabled && m.idMal && /^https:\/\//.test(R.url || "")
-      ? fill(R.url, { shikimori: m.idMal, anilist: m.id, title: Api.title(m) }) : null;
+    // адреса резерва с подстановкой {shikimori_id}, {anilist_id}, {title} (старое {shikimori} тоже работает)
+    const reserveUrls = R.enabled && m.idMal
+      ? (R.urls || (R.url ? [R.url] : []))
+          .filter((u) => /^https:\/\//.test(u))
+          .map((u) => fill(u, { shikimori_id: m.idMal, shikimori: m.idMal, anilist_id: m.id, anilist: m.id, title: Api.title(m) }))
+      : [];
+    const reserveUrl = reserveUrls[0] || null;
+    let mirror = 0;
 
     // кнопки страховки: поиск на AnimeGO и страница на Shikimori
     const linksHtml = () => `<div class="alt-links">
@@ -431,9 +437,12 @@
           note("Резервный плеер не настроен.");
         } else {
           // сторонняя страница: без allow-popups и allow-top-navigation, чтобы не открывала рекламу и не уводила со страницы
-          box.innerHTML = `<iframe src="${esc(reserveUrl)}" title="Резервный плеер" sandbox="allow-scripts allow-same-origin allow-presentation allow-forms" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="no-referrer"></iframe>`;
+          box.innerHTML = `<iframe src="${esc(reserveUrls[mirror])}" title="Резервный плеер" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation" allowfullscreen="true" allow="autoplay *; fullscreen *" referrerpolicy="no-referrer"></iframe>`;
         }
-        epsBox.innerHTML = `<p class="muted" style="max-width:70ch">Это сторонний плеер, он может не знать этот тайтл. Если рамка пустая или видео не идёт, открой «Трейлер и ссылки».</p>${linksHtml()}`;
+        const mirrors = reserveUrls.length > 1
+          ? `<div class="alt-links">${reserveUrls.map((_, i) => `<button type="button" class="chip ${i === mirror ? "on" : ""}" data-mirror="${i}">Зеркало ${i + 1}</button>`).join("")}</div>`
+          : "";
+        epsBox.innerHTML = `${mirrors}<p class="muted" style="max-width:70ch">Это сторонний плеер, он может не знать этот тайтл. Если рамка пустая или видео не идёт, попробуй другое зеркало или открой «Трейлер и ссылки».</p>${linksHtml()}`;
       } else {
         $("#epTitle").textContent = "Трейлер и ссылки";
         if (trailerId) {
@@ -444,6 +453,10 @@
         epsBox.innerHTML = `<p class="muted" style="max-width:70ch">${reason} Серии можно посмотреть на других сайтах.</p>${linksHtml()}`;
       }
     }
+    epsBox.addEventListener("click", (ev) => {
+      const b = ev.target.closest("[data-mirror]");
+      if (b && tab === 2) { mirror = Number(b.dataset.mirror); setTab(2); }
+    });
     srcBar.onclick = (ev) => {
       const b = ev.target.closest("[data-t]");
       if (b && Number(b.dataset.t) !== tab) setTab(Number(b.dataset.t));
