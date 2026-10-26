@@ -196,6 +196,35 @@
       return d.Media;
     },
 
+    // Сезоны одной франшизы: идём по цепочке PREQUEL/SEQUEL (через фильмы тоже),
+    // оставляем только сериалы. Если сезонов меньше двух — возвращаем [].
+    async seasons(id) {
+      const KEEP = ["TV", "TV_SHORT", "ONA"];
+      const seen = new Map();
+      let queue = [Number(id)];
+      for (let depth = 0; depth < 8 && queue.length && seen.size < 20; depth++) {
+        const q = queue.filter((x) => !seen.has(x)).slice(0, 10);
+        if (!q.length) break;
+        const body = q.map((x, i) => `a${i}:Media(id:${x},type:ANIME){ id idMal synonyms format seasonYear startDate{year month day} title{romaji english} coverImage{large}
+          relations{edges{relationType node{ id type }}}}`).join(" ");
+        const d = await gql(`query{ ${body} }`, {}).catch(() => null);
+        if (!d) break;
+        queue = [];
+        q.forEach((x, i) => {
+          const n = d["a" + i];
+          if (!n) return;
+          seen.set(x, n);
+          (n.relations.edges || []).forEach((e) => {
+            if ((e.relationType === "PREQUEL" || e.relationType === "SEQUEL") && e.node.type === "ANIME" && !seen.has(e.node.id)) queue.push(e.node.id);
+          });
+        });
+      }
+      const key = (n) => { const s = n.startDate || {}; return (s.year || n.seasonYear || 9999) * 10000 + (s.month || 0) * 100 + (s.day || 0); };
+      const list = [...seen.values()].filter((n) => KEEP.includes(n.format)).sort((a, b) => key(a) - key(b));
+      if (list.length < 2 || !list.some((n) => n.id === Number(id))) return [];
+      return list;
+    },
+
     // Русское название и описание с Shikimori. Если сервис недоступен — просто null.
     async russian(malId) {
       if (!malId) return null;

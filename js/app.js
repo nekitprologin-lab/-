@@ -282,11 +282,22 @@
         </div>
       </div>
       <div class="wrap" style="padding-top:0">
-        ${total ? section("Серии", `<div class="eps">${epsHtml}</div>`) : ""}
+        <div id="seasons"></div>
+        ${total ? section("Серии",`<div class="eps">${epsHtml}</div>`) : ""}
         ${relations.length ? section("Связанное", `<div class="row">${relations.map((e) => card({ ...e.node, genres: [], averageScore: null, episodes: null })).join("")}</div>`) : ""}
         ${recs.length ? section("Похожее", `<div class="row">${recs.map(card).join("")}</div>`) : ""}
       </div>
     </div>`;
+
+    // сезоны: показываем только если у франшизы больше одного сериала (фильмам и одиночным тайтлам — ничего)
+    if (["TV", "TV_SHORT", "ONA"].includes(m.format)) {
+      Api.seasons(m.id).then((list) => {
+        const box = $("#seasons");
+        if (!box || !list.length) return;
+        box.innerHTML = section("Сезоны", `<div class="seasons">${list.map((n, i) =>
+          `<a class="season ${n.id === m.id ? "cur" : ""}" href="#/anime/${n.id}"><b>Сезон ${i + 1}</b><span data-mal="${n.idMal || ""}">${esc(Api.title(n))}</span>${n.seasonYear || (n.startDate && n.startDate.year) ? `<small>${n.seasonYear || n.startDate.year}</small>` : ""}</a>`).join("")}</div>`);
+      }).catch(() => {});
+    }
 
     // русское название и описание: с Shikimori, если он доступен; иначе описание переводится автоматически
     const showDesc = (text, auto) => {
