@@ -359,6 +359,7 @@
     loading();
     const m = await Api.detail(id);
     if (!m) return fail("Аниме не найдено");
+    setTitle(Api.title(m));
     const lib = Store.get(m.id) || {};
     // показываем только вышедшие серии: у анонсов серий нет, у идущих — до последней вышедшей
     const unreleased = m.status === "NOT_YET_RELEASED";
@@ -567,6 +568,7 @@
     loading();
     const m = await Api.detail(id);
     if (!m) return fail("Аниме не найдено");
+    setTitle("Смотреть: " + Api.title(m));
 
     app.innerHTML = `<div class="wrap watch">
       <div class="watch-bar">
@@ -1215,6 +1217,7 @@
     $("#addQ").focus();
   }
 
+  const setTitle = (t) => { document.title = t ? t + " · " + cfg.SITE_NAME : cfg.SITE_NAME; };
   async function route() {
     const hash = location.hash.replace(/^#/, "") || "/";
     const [path, query] = hash.split("?");
@@ -1222,6 +1225,8 @@
     const params = new URLSearchParams(query || "");
     stopPlayer();
     drawNav();
+    const TITLES = { search: "Каталог", library: "Библиотека", friends: "Друзья", login: "Вход", diag: "Диагностика" };
+    setTitle(TITLES[parts[0]] || "");
     window.scrollTo(0, 0);
     // плавное появление новой страницы (только при смене адреса, не при перерисовке)
     app.classList.add("enter");
