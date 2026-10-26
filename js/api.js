@@ -77,6 +77,13 @@
     return [...new Set(out.filter(Boolean))].slice(0, 30);
   }
 
+  // Запрос к сервису перевода: сначала через наш Worker (работает и там, где Google закрыт), потом напрямую
+  async function trFetch(sl, tl, q) {
+    const w = (window.APP_CONFIG || {}).WORKER_URL;
+    if (w) { try { const j = await timed(w.replace(/\/$/, "") + "/?tr=" + encodeURIComponent(q) + "&sl=" + sl + "&tl=" + tl, 7000); if (Array.isArray(j)) return j; } catch (e) {} }
+    return timed("https://translate.googleapis.com/translate_a/single?client=gtx&sl=" + sl + "&tl=" + tl + "&dt=t&q=" + encodeURIComponent(q), 7000);
+  }
+
   // Описания у AniList только английские: переводим (сервис перевода Google), результат запоминаем в браузере
   const TR_KEY = "tsukimi:tr:";
   async function translate(text, key) {
@@ -93,7 +100,7 @@
     try {
       const out = [];
       for (const part of parts.slice(0, 4)) {
-        const j = await timed("https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ru&dt=t&q=" + encodeURIComponent(part), 7000);
+        const j = await trFetch("en", "ru", part);
         out.push((j[0] || []).map((x) => x[0]).join(""));
       }
       const res = out.join(" ").trim();
@@ -118,7 +125,7 @@
     for (let i = 0; i < need.length; i += 15) {
       const chunk = need.slice(i, i + 15);
       try {
-        const j = await timed("https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ru&dt=t&q=" + encodeURIComponent(chunk.join("\n")), 7000);
+        const j = await trFetch("en", "ru", chunk.join("\n"));
         const res = (j[0] || []).map((x) => x[0]).join("").split("\n").map((x) => x.trim());
         if (res.length === chunk.length) chunk.forEach((t, k) => { if (res[k]) { out[t] = res[k]; try { localStorage.setItem(TT_KEY + t, res[k]); } catch (e) {} } });
       } catch (e) { break; }
@@ -203,10 +210,17 @@
       const mals = await ruSearchMals(q).catch(() => []);
       const known = new Set(base.items.map((m) => Number(m.idMal)));
       const extra = mals.filter((x) => !known.has(x));
-      if (!extra.length) return base;
-      const more = await page({ perPage: 24, mals: extra, ...vars, sort: ["POPULARITY_DESC"] }).catch(() => ({ items: [] }));
+      // запасной путь, не зависящий от Shikimori: переводим запрос на английский и ищем в AniList
+      let en = null;
+      try { const j = await trFetch("ru", "en", q); en = (j[0] || []).map((x) => x[0]).join("").trim(); } catch (e) {}
+      const byEn = en && en.toLowerCase() !== q.toLowerCase()
+        ? await page({ search: en, ...vars, sort: ["SEARCH_MATCH"] }).catch(() => ({ items: [] })) : { items: [] };
+      const more = extra.length ? await page({ perPage: 24, mals: extra, ...vars, sort: ["POPULARITY_DESC"] }).catch(() => ({ items: [] })) : { items: [] };
       const seen = new Set(base.items.map((m) => m.id));
-      return { items: [...base.items, ...more.items.filter((m) => !seen.has(m.id))], hasNext: base.hasNext };
+      const add = [...more.items, ...byEn.items].filter((m) => !seen.has(m.id) && seen.add(m.id));
+      if (!add.length) return base;
+      // найденное по русскому названию показываем первым
+      return { items: [...more.items.filter((m) => add.includes(m)), ...base.items, ...byEn.items.filter((m) => add.includes(m))], hasNext: base.hasNext };
     },
     byGenre: (genre, perPage = 25) =>
       page({ perPage, genres: [genre], sort: ["POPULARITY_DESC"] }).then((r) => r.items),

@@ -50,6 +50,18 @@ export default {
       return new Response(await r.text(), { status: r.status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400", ...headers } });
     }
 
+    // Прокси к переводчику: ?tr=текст&sl=en&tl=ru
+    const tr = new URL(request.url).searchParams.get("tr");
+    if (tr) {
+      const q = new URL(request.url).searchParams;
+      const sl = /^[a-z]{2}$/.test(q.get("sl") || "") ? q.get("sl") : "en";
+      const tl = /^[a-z]{2}$/.test(q.get("tl") || "") ? q.get("tl") : "ru";
+      const r = await fetch("https://translate.googleapis.com/translate_a/single?client=gtx&sl=" + sl + "&tl=" + tl + "&dt=t&q=" + encodeURIComponent(tr.slice(0, 4000)), {
+        cf: { cacheTtl: 86400, cacheEverything: true },
+      });
+      return new Response(await r.text(), { status: r.status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400", ...headers } });
+    }
+
     const id = new URL(request.url).searchParams.get("id") || "";
     if (!/^\d{1,9}$/.test(id)) return json({ error: "id must be a number" }, 400, headers);
 
