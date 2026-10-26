@@ -343,54 +343,6 @@
     return hlsLoading;
   }
 
-  // ---------- Резервный плеер: Kodik REST API ----------
-  // Возвращает адрес плеера с заменённым доменом либо null, если Kodik ничего не знает об этом аниме или не ответил.
-  const kodikCache = new Map();
-  async function getKodikLink(shikimoriId, { fresh = false } = {}) {
-    const R = cfg.RESERVE || {};
-    const why = (t) => { getKodikLink.why = t; return null; };
-    getKodikLink.why = "";
-    if (!R.enabled || !R.api || !R.token || !shikimoriId) return why("резерв выключен или нет номера аниме");
-    if (!fresh && kodikCache.has(shikimoriId)) return kodikCache.get(shikimoriId);
-    const targetUrl = `${R.api}?token=${encodeURIComponent(R.token)}&shikimori_id=${encodeURIComponent(shikimoriId)}`;
-    // запрос идёт через CORS-прокси по очереди; если список пуст, пробуем напрямую
-    const routes = (R.proxies || []).map((p) => String(p).replace("{url}", encodeURIComponent(targetUrl)));
-    if (!routes.length) routes.push(targetUrl);
-    let data = null;
-    let lastFail = "";
-    for (const route of routes) {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), R.timeoutMs || 8000);
-      try {
-        const res = await fetch(route, { signal: ctrl.signal });
-        if (!res.ok) { lastFail = "прокси ответил ошибкой " + res.status; continue; }
-        data = await res.json();
-        break;
-      } catch (e) {
-        lastFail = e.name === "AbortError" ? "прокси не ответил за " + (R.timeoutMs || 8000) / 1000 + " с" : "запрос не прошёл (сеть или блокировка)";
-      } finally {
-        clearTimeout(t);
-      }
-    }
-    if (!data) return why("Kodik API недоступен: " + lastFail);
-    try {
-      if (data.error) return why("API Kodik: " + data.error);
-      const link = data && Array.isArray(data.results) && data.results[0] && data.results[0].link;
-      if (!link) {
-        kodikCache.set(shikimoriId, null); // «нет такого аниме» запоминаем, сбои сети нет
-        return why("Kodik не знает этого аниме");
-      }
-      // ссылка приходит вида //kodik.info/video/...: меняем заблокированный домен на настроенный
-      const host = String(R.host || "https://aniqit.com/").replace(/\/?$/, "/");
-      const secureLink = String(link).replace(/^(https?:)?\/\/[^/]+\//, host);
-      if (!/^https:\/\//.test(secureLink)) return why("ссылка Kodik в неожиданном виде");
-      kodikCache.set(shikimoriId, secureLink);
-      return secureLink;
-    } catch (e) {
-      return why("ответ Kodik в неожиданном виде");
-    }
-  }
-
   async function pageWatch(id, epParam) {
     loading();
     const m = await Api.detail(id);
@@ -452,6 +404,32 @@
         .join("");
     }
 
+    // ---- Источник 2: плеер по номеру MyAnimeList, серии и язык выбираются кнопками ----
+    const total = Math.min(300, m.episodes || (m.nextAiringEpisode && m.nextAiringEpisode.episode - 1) || 12);
+    let resEp = Math.max(1, Math.min(total, parseInt(epParam, 10) || 1));
+    let resLang = "sub";
+    function drawReserve() {
+      $("#epTitle").textContent = "Резервный плеер · серия " + resEp;
+      const src = String(R.url).replace(/\{(\w+)\}/g, (_, k) => ({ mal: m.idMal, ep: resEp, lang: resLang }[k] ?? ""));
+      // права рамки из конфига; пустая строка в sandbox убирает ограничения полностью
+      const sb = R.sandbox === "" ? "" : ` sandbox="${esc(R.sandbox || "allow-scripts allow-same-origin allow-forms allow-presentation")}"`;
+      box.innerHTML = `<iframe src="${esc(src)}" title="Резервный плеер"${sb} allowfullscreen="true" allow="autoplay *; fullscreen *" referrerpolicy="no-referrer"></iframe>`;
+      epsBox.innerHTML = `<div class="alt-links" role="group" aria-label="Язык">
+          <button type="button" class="chip ${resLang === "sub" ? "on" : ""}" data-lang="sub">Английские субтитры</button>
+          <button type="button" class="chip ${resLang === "dub" ? "on" : ""}" data-lang="dub">Английская озвучка</button>
+        </div>
+        ${section("Серии", `<div class="eps">${Array.from({ length: total }, (_, i) => `<button type="button" class="ep ${i + 1 === resEp ? "cur" : ""}" data-rep="${i + 1}">${i + 1}</button>`).join("")}</div>`)}
+        <p class="muted" style="max-width:70ch;margin-top:12px">Резервный плеер без русской озвучки. Если серия не открывается, попробуй другой язык.</p>`;
+      history.replaceState(null, "", "#/watch/" + m.id + "/" + resEp);
+    }
+    epsBox.addEventListener("click", (ev) => {
+      if (tab !== 2) return;
+      const l = ev.target.closest("[data-lang]");
+      const e = ev.target.closest("[data-rep]");
+      if (l) { resLang = l.dataset.lang; drawReserve(); }
+      else if (e) { resEp = Number(e.dataset.rep); drawReserve(); }
+    });
+
     function setTab(n) {
       tab = n;
       stopPlayer();
@@ -464,16 +442,8 @@
         $("#epTitle").textContent = "Источник 1";
         note(reason + (reserveOn ? " Попробуй «Источник 2»." : ""));
               } else if (n === 2) {
-        $("#epTitle").textContent = "Резервный плеер";
-        if (!reserveOn) return note("Резервный плеер не настроен.");
-        note("Ищу плеер…");
-        getKodikLink(m.idMal).then((link) => {
-          if (tab !== 2 || !box.isConnected) return; // пока искали, вкладку или страницу сменили
-          if (!link) return note(`Плеер временно недоступен<div class="muted" style="font-size:12px;margin-top:8px">${esc(getKodikLink.why || "")}</div>`);
-          // права рамки из конфига; пустая строка в sandbox убирает ограничения полностью
-          const sb = R.sandbox === "" ? "" : ` sandbox="${esc(R.sandbox || "allow-scripts allow-same-origin allow-forms allow-presentation")}"`;
-          box.innerHTML = `<iframe src="${esc(link)}" title="Резервный плеер"${sb} allowfullscreen="true" allow="autoplay *; fullscreen *" referrerpolicy="no-referrer"></iframe>`;
-        });
+        if (!reserveOn) { $("#epTitle").textContent = "Резервный плеер"; return note("Резервный плеер не настроен."); }
+        drawReserve();
       } else {
         $("#epTitle").textContent = "Трейлер";
         if (trailerId) {
@@ -694,19 +664,13 @@
       ["Видеосервер AniLibria", "https://cache.libria.fun/"],
       ["Библиотека плеера hls.js (jsDelivr)", "https://cdn.jsdelivr.net/"],
       ["Шрифты Google", "https://fonts.googleapis.com/"],
-      ["Резерв: сервер API Kodik (kodikapi.com)", "https://kodikapi.com/"],
-      ["Резерв: плеер Kodik (kodik.cc)", ((cfg.RESERVE || {}).host || "https://kodik.cc/")],
+      ["Резервный плеер (megaplay.buzz)", "https://megaplay.buzz/"],
     ];
     app.innerHTML = `<div class="wrap"><h1 style="font-size:26px">Проверка доступности</h1>
       <p class="muted">Показывает, какие сервисы открываются из твоей сети прямо сейчас. Открой эту страницу без VPN и с VPN и сравни.</p>
       <p class="muted">Этот сайт открыт по адресу: <b>${esc(location.host)}</b></p>
       <div class="friend-list" style="margin-top:16px">${checks.map(([n], i) => `<div class="friend" id="d${i}"><div><b>${esc(n)}</b> <span class="muted">проверяю…</span></div></div>`).join("")}</div>
-      <div class="friend-list" style="margin-top:10px"><div class="friend" id="dk"><div><b>Резерв: настоящий запрос к Kodik API</b> <span class="muted">проверяю…</span></div></div></div>
       <p class="note">«Не открывается» значит, что соединение обрывается или блокируется до ответа сервиса.</p></div>`;
-    getKodikLink(16498, { fresh: true }).then((link) => {
-      const el = $("#dk");
-      if (el) el.innerHTML = `<div><b>Резерв: настоящий запрос к Kodik API</b> — ${link ? `<span style="color:var(--moon)">ответил, плеер найден</span>` : `<span style="color:var(--rose)">${esc(getKodikLink.why)}</span>`}</div>`;
-    });
     checks.forEach(async ([name, url], i) => {
       const t0 = performance.now();
       const ctrl = new AbortController();
