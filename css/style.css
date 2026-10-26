@@ -51,12 +51,18 @@ main { min-height: 70vh; outline: none; }
 .nav {
   position: sticky; top: 0; z-index: 30; height: var(--nav-h);
   display: flex; align-items: center; gap: 22px; padding: 0 clamp(16px, 4vw, 56px);
-  background: linear-gradient(to bottom, rgba(0, 0, 0, .85), rgba(0, 0, 0, 0));
-  border-bottom: 1px solid transparent;
-  transition: background .35s, border-color .35s, backdrop-filter .35s;
+  background: transparent; border: 0;
+  transition: background .35s, box-shadow .35s, backdrop-filter .35s;
 }
-.nav.scrolled { background: rgba(0, 0, 0, .72); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-color: var(--line); }
-.logo { display: inline-flex; align-items: center; gap: 10px; font: 700 21px var(--font-head); letter-spacing: -.04em; color: var(--text); white-space: nowrap; }
+/* затемнение под шапкой поверх яркого баннера: текст читается на любой картинке */
+.nav::before {
+  content: ""; position: absolute; z-index: -1; left: 0; right: 0; top: 0; height: calc(var(--nav-h) + 56px); pointer-events: none;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, .88) 0%, rgba(0, 0, 0, .7) 38%, rgba(0, 0, 0, .3) 72%, rgba(0, 0, 0, 0) 100%);
+  transition: opacity .35s;
+}
+.nav.scrolled { background: rgba(0, 0, 0, .78); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 1px 0 var(--line); }
+.nav.scrolled::before { opacity: 0; }
+.logo { text-shadow: 0 1px 10px rgba(0, 0, 0, .8); display: inline-flex; align-items: center; gap: 10px; font: 700 21px var(--font-head); letter-spacing: -.04em; color: var(--text); white-space: nowrap; }
 /* луна: при загрузке «растёт» из новолуния */
 .logo::before {
   content: ""; width: 20px; height: 20px; border-radius: 50%; background: var(--moon);
@@ -65,18 +71,19 @@ main { min-height: 70vh; outline: none; }
 @keyframes phase { from { box-shadow: inset -20px 0 0 0 #000; transform: rotate(-30deg); } to { box-shadow: inset -7px 0 0 0 #000; transform: rotate(0); } }
 .nav-search { flex: 1; max-width: 440px; }
 .nav-search input {
-  width: 100%; padding: 10px 18px; border-radius: 999px; background: rgba(255, 255, 255, .06);
-  border: 1px solid var(--line); transition: background .2s, border-color .2s;
+  width: 100%; padding: 10px 18px; border-radius: 999px; background: rgba(0, 0, 0, .45);
+  border: 1px solid var(--line-2); transition: background .2s, border-color .2s;
 }
 .nav-search input::placeholder { color: var(--muted); }
 .nav-search input:focus { outline: none; background: rgba(255, 255, 255, .1); border-color: var(--line-2); }
 .nav-links { display: flex; gap: 2px; margin-left: auto; align-items: center; }
 .nav-links a, .nav-links button {
-  padding: 8px 14px; border-radius: 999px; background: none; border: 0; color: var(--muted); font-weight: 500; font-size: 15px;
+  padding: 8px 14px; border-radius: 999px; background: none; border: 0; color: rgba(243, 241, 234, .82); font-weight: 500; font-size: 15px;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, .85);
   transition: color .2s, background .2s;
 }
-.nav-links a:hover, .nav-links button:hover { color: var(--text); background: rgba(255, 255, 255, .07); }
-.nav-links a.on { color: var(--text); background: rgba(255, 255, 255, .1); }
+.nav-links a:hover, .nav-links button:hover { color: #fff; background: rgba(255, 255, 255, .1); }
+.nav-links a.on { color: #fff; background: rgba(255, 255, 255, .14); }
 
 /* ---------- общие блоки ---------- */
 .wrap { padding: 28px clamp(16px, 4vw, 56px) 72px; max-width: 1480px; margin: 0 auto; }
@@ -298,7 +305,7 @@ h2 { font-size: 22px; font-weight: 600; }
 
 /* меню пользователя */
 .usermenu { position: relative; margin-left: 6px; }
-.usermenu > button { background: rgba(255, 255, 255, .08); color: var(--text); border: 1px solid var(--line); }
+.usermenu > button { background: rgba(0, 0, 0, .5); color: #fff; border: 1px solid var(--line-2); }
 .usermenu .menu {
   position: absolute; right: 0; top: calc(100% + 10px); min-width: 220px; padding: 6px; z-index: 60; display: flex; flex-direction: column;
   background: rgba(14, 14, 14, .96); backdrop-filter: blur(16px); border: 1px solid var(--line-2); border-radius: 14px;
