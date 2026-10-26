@@ -50,16 +50,48 @@ export default {
       return new Response(await r.text(), { status: r.status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400", ...headers } });
     }
 
-    // Прокси к переводчику: ?tr=текст&sl=en&tl=ru
+    // Перевод: ?tr=текст&sl=en&tl=ru. Основной путь — Workers AI (модель m2m100, привязка AI), запасной — Google.
+    // Google блокирует адреса Cloudflare, поэтому без привязки AI перевод может не работать.
     const tr = new URL(request.url).searchParams.get("tr");
     if (tr) {
       const q = new URL(request.url).searchParams;
       const sl = /^[a-z]{2}$/.test(q.get("sl") || "") ? q.get("sl") : "en";
       const tl = /^[a-z]{2}$/.test(q.get("tl") || "") ? q.get("tl") : "ru";
-      const r = await fetch("https://translate.googleapis.com/translate_a/single?client=gtx&sl=" + sl + "&tl=" + tl + "&dt=t&q=" + encodeURIComponent(tr.slice(0, 4000)), {
-        cf: { cacheTtl: 86400, cacheEverything: true },
+      const text = tr.slice(0, 4000);
+      const names = { en: "english", ru: "russian" };
+      const out = (translated) => new Response(JSON.stringify([[[translated, text, null, null]]]), {
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400", ...headers },
       });
-      return new Response(await r.text(), { status: r.status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400", ...headers } });
+      const cache = caches.default;
+      const hit = await cache.match(request);
+      if (hit) return hit;
+      const done = async (resp) => { try { await cache.put(request, resp.clone()); } catch (e) {} return resp; };
+
+      if (env.AI && names[sl] && names[tl]) {
+        try {
+          // каждую строку переводим отдельно, длинные режем по предложениям
+          const lines = text.split("\n");
+          const tl1 = async (line) => {
+            if (!line.trim()) return line;
+            const chunks = [];
+            let cur = "";
+            for (const sent of line.split(/(?<=[.!?…])\s+/)) {
+              if ((cur + " " + sent).length > 450 && cur) { chunks.push(cur); cur = sent; } else cur = cur ? cur + " " + sent : sent;
+            }
+            if (cur) chunks.push(cur);
+            const parts = await Promise.all(chunks.map((c) => env.AI.run("@cf/meta/m2m100-1.2b", { text: c, source_lang: names[sl], target_lang: names[tl] })));
+            return parts.map((p) => p.translated_text || "").join(" ");
+          };
+          const res = await Promise.all(lines.map(tl1));
+          return done(out(res.join("\n")));
+        } catch (e) { /* пробуем Google */ }
+      }
+      const r = await fetch("https://translate.googleapis.com/translate_a/single?client=gtx&sl=" + sl + "&tl=" + tl + "&dt=t&q=" + encodeURIComponent(text), {
+        headers: { "User-Agent": CHROME_UA },
+      });
+      if (!r.ok) return json({ error: "translate unavailable", status: r.status }, 502, headers);
+      return done(new Response(await r.text(), { status: 200, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400", ...headers } }));
     }
 
     const id = new URL(request.url).searchParams.get("id") || "";
