@@ -1028,7 +1028,41 @@
       <p class="muted">Показывает, какие сервисы открываются из твоей сети прямо сейчас. Открой эту страницу без VPN и с VPN и сравни.</p>
       <p class="muted">Этот сайт открыт по адресу: <b>${esc(location.host)}</b></p>
       <div class="friend-list" style="margin-top:16px">${checks.map(([n], i) => `<div class="friend" id="d${i}"><div><b>${esc(n)}</b> <span class="muted">проверяю…</span></div></div>`).join("")}</div>
-      <p class="note">«Не открывается» значит, что соединение обрывается или блокируется до ответа сервиса.</p></div>`;
+      <p class="note">«Не открывается» значит, что соединение обрывается или блокируется до ответа сервиса.</p>
+      <h2 style="margin-top:34px">Реальные запросы сайта</h2>
+      <p class="muted">Те же запросы, которые делает сайт. Здесь видно, чем именно они заканчиваются (код ответа или ошибка).</p>
+      <div class="friend-list" id="apiChecks" style="margin-top:16px"></div></div>`;
+    // реальные запросы с кодом ответа
+    const W = (window.APP_CONFIG || {}).WORKER_URL || "";
+    const wk = (q) => W.replace(/\/$/, "") + "/" + q;
+    const probe = async (label, fn) => {
+      const row = document.createElement("div");
+      row.className = "friend";
+      row.innerHTML = `<div><b>${esc(label)}</b> <span class="muted">проверяю…</span></div>`;
+      const box = $("#apiChecks");
+      if (!box) return;
+      box.appendChild(row);
+      const t0 = performance.now();
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
+      let res = null, err = "";
+      try { res = await fn(ctrl.signal); } catch (e) { err = e.name === "AbortError" ? "нет ответа за 10 секунд" : e.message; }
+      clearTimeout(timer);
+      const ms = Math.round(performance.now() - t0);
+      const ok = res && res.ok;
+      row.innerHTML = `<div><b>${esc(label)}</b> — ${ok ? `<span style="color:var(--moon)">работает</span>` : `<span style="color:var(--rose)">${esc(res ? "ответ " + res.status : err || "ошибка")}</span>`} <span class="muted">${ms} мс</span></div>`;
+    };
+    const gq = "query{Media(id:16498,type:ANIME){title{english}}}";
+    probe("AniList напрямую (запрос каталога)", (sg) => fetch("https://graphql.anilist.co", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: gq }), signal: sg }));
+    probe("Kitsu (поиск по началу слова)", (sg) => fetch("https://kitsu.io/api/edge/anime?filter[text]=torad&page[limit]=2", { signal: sg }));
+    probe("Jikan / MyAnimeList (поиск)", (sg) => fetch("https://api.jikan.moe/v4/anime?q=torad&limit=2", { signal: sg }));
+    probe("AniLibria (поиск)", (sg) => fetch("https://anilibria.top/api/v1/app/search/releases?query=torad", { signal: sg }));
+    if (W) {
+      probe("Worker: AniList через прокси", (sg) => fetch(wk("?al=1&q=" + encodeURIComponent(gq) + "&v=%7B%7D"), { signal: sg }));
+      probe("Worker: перевод описаний", (sg) => fetch(wk("?tr=Attack%20on%20Titan&sl=en&tl=ru"), { signal: sg }));
+      probe("Worker: умный поиск (ИИ)", (sg) => fetch(wk("?ai=" + encodeURIComponent("торадора")), { signal: sg }));
+      probe("Worker: плеер Kodik", (sg) => fetch(wk("?id=16498"), { signal: sg }));
+    }
     checks.forEach(async ([name, url], i) => {
       const t0 = performance.now();
       const ctrl = new AbortController();
@@ -1188,6 +1222,8 @@
     // сначала мгновенно из локального индекса, потом дополняем ответом из сети
     const loc = Api.localSearch(q, { limit: 8 });
     if (loc.length) { sgItems = loc; sgSel = -1; sgPaint(true); } else sgPaint(true);
+    // локальный индекс уже дал достаточно подсказок: не нагружаем сеть (у AniList лимит запросов)
+    if (loc.length >= 6) { sgPaint(false); return; }
     try {
       const net = await Api.suggest(q);
       if (my !== sgSeq) return;
@@ -1208,7 +1244,7 @@
     // локальные подсказки показываем на каждую букву сразу, запрос в сеть — с небольшой паузой
     const loc = Api.localSearch(q, { limit: 8 });
     if (loc.length) { sgItems = loc; sgSel = -1; sgPaint(true); }
-    sgTimer = setTimeout(sgRun, 120);
+    sgTimer = setTimeout(sgRun, 220);
   });
   qIn.addEventListener("focus", () => { if (qIn.value.trim() && sgItems.length) sgPaint(false); });
   qIn.addEventListener("keydown", (e) => {

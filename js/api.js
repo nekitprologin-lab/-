@@ -207,7 +207,7 @@
         }
         clearTimeout(timer);
         if (res.status === 429 || res.status >= 500) {
-          const wait = Math.min(4, Number(res.headers && res.headers.get && res.headers.get("Retry-After")) || 1.5 * (attempt + 1));
+          const wait = Math.min(8, Number(res.headers && res.headers.get && res.headers.get("Retry-After")) || 2 * (attempt + 1));
           lastErr = new Error("AniList перегружен (" + res.status + "), повторяю…");
           await new Promise((r) => setTimeout(r, wait * 1000));
           continue;
