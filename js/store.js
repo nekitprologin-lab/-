@@ -3,9 +3,11 @@
 (function () {
   const cfg = window.APP_CONFIG;
   const cloud = !!(cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY && window.supabase);
-  const sb = cloud ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY) : null;
+  // PKCE: после входа через Google код приходит в ?code=, а не в #…, который занят адресами страниц сайта
+  const sb = cloud ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, { auth: { flowType: "pkce" } }) : null;
 
   let rows = new Map(); // anime_id -> строка библиотеки текущего пользователя
+  let hist = []; // история просмотра: [{anime_id, episode, title, poster, watched_at}], новые первыми
   const listeners = [];
   const emit = () => listeners.forEach((fn) => fn());
 
@@ -16,6 +18,7 @@
 
     all: () => [...rows.values()],
     get: (id) => rows.get(Number(id)) || null,
+    history: () => hist,
 
     // ---------- вход ----------
     async init() {
@@ -45,6 +48,24 @@
       await S._afterLogin(data.user);
     },
 
+    // Вход через Google: уводит на страницу Google и возвращает на сайт, сессию подхватит init()
+    async signInWithGoogle() {
+      const { error } = await sb.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: location.origin + location.pathname },
+      });
+      if (error) throw new Error(S._authError(error));
+    },
+
+    // Код приглашения для тех, кто вошёл через Google
+    async redeemInvite(code) {
+      const { data, error } = await sb.rpc("redeem_invite", { code: String(code || "").trim() });
+      if (error) throw new Error(error.message);
+      if (!data) throw new Error("Неверный код приглашения.");
+      S.user.approved = true;
+      await S._loadData();
+    },
+
     localLogin(name) {
       name = (name || "").trim();
       if (!name) throw new Error("Введи имя.");
@@ -57,6 +78,7 @@
       else localStorage.removeItem("tsukimi:user");
       S.user = null;
       rows = new Map();
+      hist = [];
       emit();
     },
 
@@ -71,18 +93,42 @@
 
     _localLogin(name) {
       S.user = { id: "local:" + name, name };
+      S.user.approved = true;
       let saved = [];
       try { saved = JSON.parse(localStorage.getItem("tsukimi:lib:" + name) || "[]"); } catch (e) {}
       rows = new Map(saved.map((r) => [r.anime_id, r]));
+      hist = [];
+      try { hist = JSON.parse(localStorage.getItem("tsukimi:hist:" + name) || "[]"); } catch (e) {}
       emit();
     },
 
     async _afterLogin(user) {
-      const name = (user.user_metadata && user.user_metadata.name) || user.email.split("@")[0];
-      S.user = { id: user.id, name };
-      const { data, error } = await sb.from("library").select("*").eq("user_id", user.id);
+      const meta = user.user_metadata || {};
+      const name = meta.name || meta.full_name || (user.email || "user").split("@")[0];
+      S.user = { id: user.id, name, approved: true };
+      const { data: prof, error: pe } = await sb.from("profiles").select("name, approved").eq("id", user.id).maybeSingle();
+      if (pe) throw new Error("Не удалось загрузить профиль: " + pe.message);
+      if (prof) {
+        S.user.name = prof.name || name;
+        S.user.approved = prof.approved !== false;
+      }
+      if (!S.user.approved) {
+        // вошёл через Google, но не ввёл код приглашения: данные не грузим, сайт попросит код
+        rows = new Map();
+        hist = [];
+        emit();
+        return;
+      }
+      await S._loadData();
+    },
+
+    async _loadData() {
+      const id = S.user.id;
+      const { data, error } = await sb.from("library").select("*").eq("user_id", id);
       if (error) throw new Error("Не удалось загрузить данные: " + error.message);
       rows = new Map(data.map((r) => [Number(r.anime_id), r]));
+      const h = await sb.from("history").select("*").eq("user_id", id).order("watched_at", { ascending: false }).limit(500);
+      hist = h.error ? [] : h.data; // старая схема без таблицы history не должна ломать вход
       emit();
     },
 
@@ -115,6 +161,27 @@
         localStorage.setItem("tsukimi:lib:" + S.user.name, JSON.stringify(S.all()));
       }
       return row;
+    },
+
+    // История: каждая открытая серия (одна строка на аниме и серию, время обновляется при повторном просмотре)
+    async addHistory(anime, episode) {
+      const ep = Number(episode);
+      if (!S.user || !S.user.approved || !Number.isInteger(ep)) return;
+      const row = {
+        anime_id: anime.id,
+        episode: ep,
+        title: window.Api.title(anime),
+        poster: (anime.coverImage && anime.coverImage.large) || null,
+        watched_at: new Date().toISOString(),
+      };
+      hist = [row, ...hist.filter((h) => !(Number(h.anime_id) === row.anime_id && Number(h.episode) === ep))].slice(0, 500);
+      emit();
+      if (cloud) {
+        const { error } = await sb.from("history").upsert({ ...row, user_id: S.user.id }, { onConflict: "user_id,anime_id,episode" });
+        if (error) throw new Error("Не удалось сохранить историю: " + error.message);
+      } else {
+        localStorage.setItem("tsukimi:hist:" + S.user.name, JSON.stringify(hist));
+      }
     },
 
     async remove(animeId) {

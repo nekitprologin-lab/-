@@ -429,6 +429,7 @@
         ${section("Серии", `<div class="eps">${Array.from({ length: total }, (_, i) => `<button type="button" class="ep ${i + 1 === resEp ? "cur" : ""}" data-rep="${i + 1}">${i + 1}</button>`).join("")}</div>`)}
         <p class="muted" style="max-width:70ch;margin-top:12px">Резервный плеер без русской озвучки. Если серия не открывается, попробуй другой язык.</p>`;
       history.replaceState(null, "", "#/watch/" + m.id + "/" + resEp);
+      if (Store.user) Store.addHistory(m, resEp).catch((err) => toast(err.message));
     }
     // ---- Источник 2: Kodik через шлюз на Cloudflare Workers ----
     const gateCache = (window.__gateCache = window.__gateCache || new Map());
@@ -606,6 +607,7 @@
         const patch = { episode: Number(e.ordinal) };
         if (!lib.status || lib.status === "planned") patch.status = "watching";
         Store.save(m, patch).catch((err) => toast(err.message));
+        Store.addHistory(m, e.ordinal).catch((err) => toast(err.message));
       }
     }
 
@@ -636,14 +638,29 @@
     if (!Store.user) return (location.hash = "#/login");
     const tab = params.get("tab") || "liked";
     const all = Store.all();
-    const tabs = [["liked", "Нравится"], ...Object.entries(STATUS)];
-    const list = all
-      .filter((r) => (tab === "liked" ? r.liked : r.status === tab))
-      .sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1));
+    const hist = Store.history();
+    const tabs = [["liked", "Нравится"], ...Object.entries(STATUS), ["history", "История"]];
+    const count = (k) => (k === "history" ? hist.length : all.filter((r) => (k === "liked" ? r.liked : r.status === k)).length);
+    let body;
+    if (tab === "history") {
+      const fmt = (iso) => { try { return new Date(iso).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
+      body = hist.length
+        ? `<div class="friend-list">${hist.map((h) => `<a class="friend" href="#/watch/${h.anime_id}/${h.episode}">
+            ${h.poster ? `<img src="${esc(h.poster)}" alt="" loading="lazy">` : ""}
+            <div><b>${esc(h.title || "Аниме")}</b><div class="muted">Серия ${esc(h.episode)} · ${esc(fmt(h.watched_at))}</div></div></a>`).join("")}</div>`
+        : `<div class="empty">Ты пока ничего не смотрел. Открытые серии появятся здесь.</div>`;
+    } else {
+      const list = all
+        .filter((r) => (tab === "liked" ? r.liked : r.status === tab))
+        .sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1));
+      body = list.length
+        ? `<div class="grid">${list.map((r) => libCard(r, r.episode ? "Серия " + r.episode : "")).join("")}</div>`
+        : `<div class="empty">Здесь пока пусто. Найди аниме в <a href="#/search">каталоге</a> и добавь его в список.</div>`;
+    }
     app.innerHTML = `<div class="wrap">
       <h1 style="font-size:26px">Моя библиотека</h1>
-      <div class="chips">${tabs.map(([k, v]) => `<a class="chip ${k === tab ? "on" : ""}" href="#/library?tab=${k}">${v} · ${all.filter((r) => (k === "liked" ? r.liked : r.status === k)).length}</a>`).join("")}</div>
-      <div style="margin-top:24px">${list.length ? `<div class="grid">${list.map((r) => libCard(r, r.episode ? "Серия " + r.episode : "")).join("")}</div>` : `<div class="empty">Здесь пока пусто. Найди аниме в <a href="#/search">каталоге</a> и добавь его в список.</div>`}</div>
+      <div class="chips">${tabs.map(([k, v]) => `<a class="chip ${k === tab ? "on" : ""}" href="#/library?tab=${k}">${v} · ${count(k)}</a>`).join("")}</div>
+      <div style="margin-top:24px">${body}</div>
     </div>`;
   }
 
@@ -664,6 +681,35 @@
     app.innerHTML = `<div class="wrap"><h1 style="font-size:26px">Друзья</h1><div style="margin-top:20px">${body}</div></div>`;
   }
 
+  // Вошёл через Google, но ещё не ввёл код приглашения
+  function pageInvite() {
+    app.innerHTML = `<div class="auth">
+      <h1>Код приглашения</h1>
+      <div class="muted">Привет, ${esc(Store.user.name)}! Сайт закрытый: введи код, который дал владелец, чтобы продолжить.</div>
+      <form id="inviteForm">
+        <label class="field"><span>Код приглашения</span><input name="invite" required autocomplete="off"></label>
+        <button class="btn primary" type="submit">Продолжить</button>
+        <div class="error" id="err" role="alert"></div>
+      </form>
+      <button class="btn" type="button" id="inviteOut" style="margin-top:10px">Выйти</button>
+    </div>`;
+    $("#inviteForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const btn = $("button[type=submit]", e.target);
+      btn.disabled = true;
+      try {
+        await Store.redeemInvite(new FormData(e.target).get("invite"));
+        toast("Добро пожаловать!");
+        location.hash = "#/";
+        route();
+      } catch (err) {
+        $("#err").textContent = err.message;
+        btn.disabled = false;
+      }
+    };
+    $("#inviteOut").onclick = async () => { await Store.signOut(); location.hash = "#/"; route(); };
+  }
+
   function pageLogin() {
     if (Store.user) return (location.hash = "#/");
     const cloud = Store.mode === "cloud";
@@ -682,6 +728,8 @@
           <button class="btn primary" type="submit">${mode === "up" ? "Создать аккаунт" : "Войти"}</button>
           <div class="error" id="err" role="alert"></div>
         </form>
+        ${cloud ? `<div class="or"><span>или</span></div>
+        <button class="btn google" type="button" id="googleBtn"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.6 5.9c4.4-4.1 7-10.1 7-17.6z"/><path fill="#FBBC05" d="M10.5 28.7a14.5 14.5 0 0 1 0-9.4l-7.9-6.1a24 24 0 0 0 0 21.6l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2.1 1.4-4.9 2.3-8.3 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg> Продолжить с Google</button>` : `<p class="note">Сейчас включён локальный режим: данные хранятся только в этом браузере. Вход по почте и через Google появится после подключения Supabase (инструкция в README).</p>`}
       </div>`;
       $("#authForm").onsubmit = async (e) => {
         e.preventDefault();
@@ -699,6 +747,11 @@
         }
       };
       app.querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => { mode = b.dataset.m; draw(); }));
+      const g = $("#googleBtn");
+      if (g) g.onclick = async () => {
+        g.disabled = true;
+        try { await Store.signInWithGoogle(); } catch (err) { $("#err").textContent = err.message; g.disabled = false; }
+      };
     };
     draw();
   }
@@ -754,7 +807,9 @@
     drawNav();
     window.scrollTo(0, 0);
     try {
-      if (!parts.length) await pageHome();
+      // вошёл через Google без кода приглашения: пускаем только на страницу ввода кода
+      if (Store.user && Store.user.approved === false) pageInvite();
+      else if (!parts.length) await pageHome();
       else if (parts[0] === "search") await pageSearch(params);
       else if (parts[0] === "anime") await pageAnime(parts[1]);
       else if (parts[0] === "watch") await pageWatch(parts[1], parts[2]);
