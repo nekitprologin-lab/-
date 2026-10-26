@@ -440,6 +440,7 @@
         try { const j = JSON.parse(text); url = j && j.url; } catch (e) {}
         if (!url) return { err: "Kodik не знает этого аниме" };
         if (!/^https:\/\//.test(url)) return { err: "шлюз вернул ссылку в неожиданном виде" };
+        if (cfg.KODIK_HOST && /^https:\/\//.test(cfg.KODIK_HOST)) url = url.replace(/^https:\/\/[^/]+\//, cfg.KODIK_HOST.replace(/\/?$/, "/"));
         gateCache.set(m.idMal, { url });
         return { url };
       } catch (e) {

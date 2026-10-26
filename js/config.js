@@ -23,6 +23,9 @@ window.APP_CONFIG = {
   // Впиши адрес воркера, например "https://kodik-gate.твоё-имя.workers.dev". Пока пусто, вкладка «Источник 2» отключена.
   // Сайт делает запрос WORKER_URL?id=НОМЕР_MYANIMELIST, воркер отвечает JSON {"url": "https://…"}, ссылка идёт в рамку.
   WORKER_URL: "https://bold-leaf-6465.nekitpro-login.workers.dev",
+  // Домен плеера Kodik. Воркер отдаёт ссылку на aniqit.com, а он у меня не открывался; kodikplayer.com открылся и показал
+  // настоящий плеер Kodik. Домен подменяется прямо на сайте, воркер переразвёртывать не нужно. Пусто = оставить как пришло.
+  KODIK_HOST: "https://kodikplayer.com/",
   WORKER_SANDBOX: "allow-scripts allow-same-origin allow-forms allow-presentation",
 
   // Источник 3 (крайний случай): плеер megaplay.buzz по номеру MyAnimeList, внутри нашего окна. Язык: английские
