@@ -135,7 +135,7 @@
       html += section("Продолжить просмотр", `<div class="row">${cont.map((r) => libCard(r, "Серия " + r.episode)).join("")}</div>`);
 
     html += `<div id="recs"></div><div id="friendsBlock"></div>`;
-    html += section("В тренде", `<div class="row">${trending.map(card).join("")}</div>`);
+    html += section("В тренде", `<div class="row ranked">${trending.map(card).join("")}</div>`);
     html += section("Этот сезон", `<div class="row">${season.map(card).join("")}</div>`);
     if (!Store.user)
       html += `<div class="empty" style="margin-top:40px"><a href="#/login">Войди</a>, чтобы сохранять лайки и историю и получать рекомендации.</div>`;
@@ -980,6 +980,10 @@
     stopPlayer();
     drawNav();
     window.scrollTo(0, 0);
+    // плавное появление новой страницы (только при смене адреса, не при перерисовке)
+    app.classList.add("enter");
+    clearTimeout(route._t);
+    route._t = setTimeout(() => app.classList.remove("enter"), 900);
     try {
       // вошёл через Google без кода приглашения: пускаем только на страницу ввода кода
       if (Store.user && Store.user.approved === false) pageInvite();
@@ -1015,6 +1019,12 @@
   };
   document.addEventListener("mouseover", warm);
   document.addEventListener("touchstart", warm, { passive: true });
+
+  // шапка становится стеклянной, когда страница прокручена
+  const navEl = $("#nav");
+  const onScroll = () => navEl.classList.toggle("scrolled", window.scrollY > 24);
+  window.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
 
   window.addEventListener("hashchange", route);
   Store.init().catch((e) => toast(e.message)).finally(route);
