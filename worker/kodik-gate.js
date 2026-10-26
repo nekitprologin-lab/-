@@ -56,17 +56,22 @@ export default {
       if (!env.AI) return json({ error: "ai not configured" }, 501, headers);
       const text = aiq.trim().slice(0, 200);
       const cache = caches.default;
-      const ckey = new Request("https://ai.cache/" + encodeURIComponent(text.toLowerCase()));
+      const ckey = new Request("https://ai.cache/v2/" + encodeURIComponent(text.toLowerCase()));
       const hit = await cache.match(ckey);
       if (hit) return new Response(hit.body, { status: 200, headers: { "Content-Type": "application/json; charset=utf-8", ...headers } });
       const GENRES = ["Action", "Adventure", "Comedy", "Drama", "Ecchi", "Fantasy", "Horror", "Mahou Shoujo", "Mecha", "Music", "Mystery", "Psychological", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural", "Thriller"];
       const TAGS = ["School", "Tragedy", "Isekai", "Time Travel", "Magic", "Military", "Vampire", "Demons", "Gore", "Parody", "Love Triangle", "Female Protagonist", "Male Protagonist", "Super Power", "Samurai", "Detective", "Survival", "Reincarnation", "Cyberpunk", "Space", "Post-Apocalyptic", "Politics", "War", "Idol", "Cooking", "Iyashikei", "Coming of Age", "Anti-Hero", "Workplace", "Martial Arts", "Swordplay", "Video Games", "Virtual World", "Philosophy", "Dystopian", "Mythology", "Historical", "Shounen", "Seinen", "Josei", "Shoujo", "Ghost", "Monster Girl", "Robots", "Pirates", "Ninja", "Superhero", "Boys' Love", "Yuri", "Harem", "Revenge", "Friendship", "Family Life", "Bullying", "Cult", "Conspiracy", "Heist", "Dragons", "Zombie", "Alchemy", "Writing", "Band", "Basketball", "Football", "Volleyball", "Tennis", "Swimming"];
       const sys = "You convert an anime search request (any language, may contain typos) into JSON for the AniList API. Reply with ONLY one JSON object: " +
-        '{"titles":[],"similar_to":null,"genres":[],"tags":[],"year":null,"format":null}. ' +
-        "titles: up to 3 official English or romaji titles if the user names or misspells specific anime, else []. " +
-        "similar_to: the title of an anime if the user asks for something similar to it, else null. " +
-        "genres: 0-3 values ONLY from: " + GENRES.join(", ") + ". tags: 0-3 values ONLY from: " + TAGS.join(", ") + ". " +
-        'year: number or null. format: "TV", "MOVIE", "OVA" or null. Do not explain.';
+        '{"titles":[],"similar_to":null,"genres":[],"tags":[],"year":null,"format":null}. Rules: ' +
+        "titles = official English/romaji titles ONLY when the user names (or misspells/transliterates) a specific anime; for descriptive requests titles MUST be []. Never invent titles. " +
+        "similar_to = the anime title when the user asks for something similar/like/in the style of an anime, otherwise null; in that case leave genres, tags and year empty. " +
+        "genres = 0-3 values ONLY from: " + GENRES.join(", ") + ". tags = 0-3 values ONLY from: " + TAGS.join(", ") + ". " +
+        "year = a number ONLY if the user states a year or season year, else null. format = TV, MOVIE or OVA only if stated, else null. Do not explain. Examples: " +
+        'Request: "торадора" -> {"titles":["Toradora!"],"similar_to":null,"genres":[],"tags":[],"year":null,"format":null} ' +
+        'Request: "что-то похожее на Атаку титанов" -> {"titles":[],"similar_to":"Attack on Titan","genres":[],"tags":[],"year":null,"format":null} ' +
+        'Request: "грустное аниме про любовь в школе" -> {"titles":[],"similar_to":null,"genres":["Romance","Drama"],"tags":["School","Tragedy"],"year":null,"format":null} ' +
+        'Request: "комедия про школу 2020 года" -> {"titles":[],"similar_to":null,"genres":["Comedy"],"tags":["School"],"year":2020,"format":null} ' +
+        'Request: "фильм про космос" -> {"titles":[],"similar_to":null,"genres":["Sci-Fi"],"tags":["Space"],"year":null,"format":"MOVIE"}';
       const run = (model) => env.AI.run(model, { messages: [{ role: "system", content: sys }, { role: "user", content: text }], max_tokens: 140, temperature: 0 });
       let out;
       try { out = await run("@cf/meta/llama-3.1-8b-instruct-fast"); }

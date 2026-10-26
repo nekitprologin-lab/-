@@ -290,18 +290,19 @@
     const plan = await aiPlan(q);
     if (!plan) return null;
     const jobs = [];
-    // 1. названия (в том числе исправленные опечатки и транслит)
-    (plan.titles || []).slice(0, 3).forEach((t) => jobs.push(gql(AI_Q, { s: t }).then((d) => d.Page.media.slice(0, 4)).catch(() => [])));
-    // 2. «похожее на X»
+    const nWords = q.split(/\s+/).filter(Boolean).length;
+    const g = plan.genres || [], t = plan.tags || [];
     if (plan.similar_to) {
+      // «похоже на X»: берём рекомендации AniList к X
       jobs.push(
-        gql(`query($s:String){Media(search:$s,type:ANIME){ recommendations(sort:RATING_DESC,perPage:14){nodes{mediaRecommendation{ ${LITE} }}}}}`, { s: plan.similar_to })
+        gql(`query($s:String){Media(search:$s,type:ANIME){ id recommendations(sort:RATING_DESC,perPage:16){nodes{mediaRecommendation{ ${LITE} }}}}}`, { s: plan.similar_to })
           .then((d) => (d.Media.recommendations.nodes || []).map((n) => n.mediaRecommendation).filter(Boolean)).catch(() => [])
       );
-    }
-    // 3. жанры и теги: если ничего не нашлось, по шагам ослабляем условия
-    const g = plan.genres || [], t = plan.tags || [];
-    if (g.length || t.length || plan.year) {
+    } else if ((plan.titles || []).length && nWords <= 3) {
+      // человек назвал конкретное аниме (возможно, с опечаткой или по-русски): ищем по исправленному названию
+      (plan.titles || []).slice(0, 3).forEach((tt) => jobs.push(gql(AI_Q, { s: tt }).then((d) => d.Page.media.slice(0, 6)).catch(() => [])));
+    } else if (g.length || t.length || plan.year) {
+      // описание: подбираем по жанрам, тегам и году; если ничего не нашлось, по шагам ослабляем условия
       jobs.push((async () => {
         const tries = [
           { g, t, y: plan.year, f: plan.format },
