@@ -310,20 +310,27 @@
       { g, t, y: plan.year, f: plan.format, sc: 60 },
       { g, t, y: plan.year, sc: 60 },
       { g, t, sc: 60 },
+      { t, y: plan.year, sc: 60 },          // конкретные теги («путешествия во времени») информативнее общих жанров
       { g: g.slice(0, 2), t: t.slice(0, 1), sc: 60 },
+      { t: t.slice(0, 2), sc: 60 },
+      { g: g.slice(0, 2), y: plan.year, sc: 60 },
       { g: g.slice(0, 1), t: t.slice(0, 1), sc: 55 },
-      { t: t.slice(0, 2), sc: 55 },
-      { g: g.slice(0, 2), sc: 60 },
-      { t: t.slice(0, 1) },
-      { g: g.slice(0, 1) },
+      { t: t.slice(0, 1), sc: 55 },
+      { g: g.slice(0, 1), sc: 60 },
     ];
-    for (const v of tries) {
+    // Запросы идут волнами (параллельно внутри волны, чтобы было быстро): точные совпадения — первыми, слабые условия добирают до нужного количества.
+    const run = (v) => {
       const vars = { g: v.g && v.g.length ? v.g : undefined, t: v.t && v.t.length ? v.t : undefined, y: v.y || undefined, f: v.f || undefined, sc: v.sc || undefined };
-      if (!vars.g && !vars.t && !vars.y) continue;
-      const items = await gql(AI_Q, vars).then((d) => d.Page.media).catch(() => []);
-      if (items.length >= 3) return items;
+      if (!vars.g && !vars.t && !vars.y) return Promise.resolve([]);
+      return gql(AI_Q, vars).then((d) => d.Page.media).catch(() => []);
+    };
+    const acc = [], seen = new Set();
+    for (const wave of [[0, 3, 4], [1, 2, 5, 6], [7, 8, 9]]) {
+      const lists = await Promise.all(wave.map((i) => run(tries[i])));
+      lists.map((l, k) => [wave[k], l]).sort((a, b) => a[0] - b[0]).forEach(([, l]) => l.forEach((m) => { if (!seen.has(m.id)) { seen.add(m.id); acc.push(m); } }));
+      if (acc.length >= 14) break;
     }
-    return [];
+    return acc;
   }
   const recsOf = (name) =>
     gql(`query($s:String){Media(search:$s,type:ANIME){ id recommendations(sort:RATING_DESC,perPage:18){nodes{mediaRecommendation{ ${LITE} }}}}}`, { s: name })
