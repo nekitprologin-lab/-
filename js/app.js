@@ -348,9 +348,26 @@
   // Позиция просмотра (минута серии) хранится в этом браузере; серия и статус синхронизируются через аккаунт
   const Pos = {
     key: (id) => "tsukimi:pos:" + ((Store.user && Store.user.name) || "guest") + ":" + id,
-    get(id) { try { return JSON.parse(localStorage.getItem(Pos.key(id)) || "null"); } catch (e) { return null; } },
-    set(id, ep, t) { try { localStorage.setItem(Pos.key(id), JSON.stringify({ ep: String(ep), t: Math.floor(t), at: Date.now() })); } catch (e) {} },
-    clear(id) { try { localStorage.removeItem(Pos.key(id)); } catch (e) {} },
+    local(id) { try { return JSON.parse(localStorage.getItem(Pos.key(id)) || "null"); } catch (e) { return null; } },
+    // берём более свежую из двух: сохранённую в браузере или в аккаунте (с другого устройства)
+    get(id) {
+      const l = Pos.local(id), c = Store.user ? Store.position(id) : null;
+      return l && c ? (c.at > l.at ? c : l) : l || c;
+    },
+    _cloudAt: {},
+    set(id, ep, t, src, anime) {
+      const rec = { ep: String(ep), t: Math.floor(t), at: Date.now() };
+      if (src) rec.src = src;
+      try { localStorage.setItem(Pos.key(id), JSON.stringify(rec)); } catch (e) {}
+      if (anime && Store.user && Date.now() - (Pos._cloudAt[id] || 0) > 20000) {
+        Pos._cloudAt[id] = Date.now();
+        Store.savePosition(anime, ep, t, src || "native").catch(() => {});
+      }
+    },
+    clear(id) {
+      try { localStorage.removeItem(Pos.key(id)); } catch (e) {}
+      if (Store.user) Store.clearPosition(id).catch(() => {});
+    },
   };
   const mmss = (t) => { t = Math.floor(t); const h = Math.floor(t / 3600), m2 = Math.floor((t % 3600) / 60), s2 = t % 60; return (h ? h + ":" + String(m2).padStart(2, "0") : m2) + ":" + String(s2).padStart(2, "0"); };
 
@@ -520,7 +537,7 @@
         const now = Date.now();
         if (now - kodikSave < 5000) return;
         kodikSave = now;
-        try { localStorage.setItem(Pos.key(m.id), JSON.stringify({ ep: kodikEp ? String(kodikEp) : "", t: Math.floor(d.value), at: now, src: "kodik" })); } catch (e) {}
+        Pos.set(m.id, kodikEp || "", d.value, "kodik", m);
       }
     };
     window.addEventListener("message", onKodikMsg);
@@ -620,9 +637,9 @@
       if (now - lastSave < 5000 || !video.currentTime || video.currentTime < 5) return;
       lastSave = now;
       if (video.duration && video.duration - video.currentTime < 30) return Pos.clear(m.id);
-      Pos.set(m.id, eps[idx].ordinal, video.currentTime);
+      Pos.set(m.id, eps[idx].ordinal, video.currentTime, "native", m);
     });
-    video.addEventListener("pause", () => { if (video.currentTime > 5 && !(video.duration && video.duration - video.currentTime < 30)) Pos.set(m.id, eps[idx].ordinal, video.currentTime); });
+    video.addEventListener("pause", () => { if (video.currentTime > 5 && !(video.duration && video.duration - video.currentTime < 30)) Pos.set(m.id, eps[idx].ordinal, video.currentTime, "native", m); });
     video.addEventListener("ended", () => Pos.clear(m.id));
     function resumeBar(text, onRestart) {
       let bar = $("#resumeBar");

@@ -174,14 +174,49 @@
         poster: (anime.coverImage && anime.coverImage.large) || null,
         watched_at: new Date().toISOString(),
       };
+      const prevRow = hist.find((h) => Number(h.anime_id) === row.anime_id && Number(h.episode) === ep);
+      if (prevRow && prevRow.position_sec) { row.position_sec = prevRow.position_sec; row.source = prevRow.source || null; }
       hist = [row, ...hist.filter((h) => !(Number(h.anime_id) === row.anime_id && Number(h.episode) === ep))].slice(0, 500);
       emit();
       if (cloud) {
-        const { error } = await sb.from("history").upsert({ ...row, user_id: S.user.id }, { onConflict: "user_id,anime_id,episode" });
+        const dbRow = { anime_id: row.anime_id, episode: row.episode, title: row.title, poster: row.poster, watched_at: row.watched_at };
+        const { error } = await sb.from("history").upsert({ ...dbRow, user_id: S.user.id }, { onConflict: "user_id,anime_id,episode" });
         if (error) throw new Error("Не удалось сохранить историю: " + error.message);
       } else {
         localStorage.setItem("tsukimi:hist:" + S.user.name, JSON.stringify(hist));
       }
+    },
+
+    // Минута просмотра: хранится в строке истории той серии, которую смотрим (колонки position_sec и source)
+    position(animeId) {
+      const r = hist.find((h) => Number(h.anime_id) === Number(animeId) && h.position_sec > 0);
+      return r ? { ep: String(r.episode), t: r.position_sec, src: r.source || "", at: Date.parse(r.watched_at) || 0 } : null;
+    },
+    async savePosition(anime, episode, sec, source) {
+      const ep = Number(episode);
+      if (!S.user || !S.user.approved || !Number.isInteger(ep) || ep < 1) return;
+      const now = new Date().toISOString();
+      const prevRow = hist.find((h) => Number(h.anime_id) === anime.id && Number(h.episode) === ep) || {};
+      const row = {
+        anime_id: anime.id, episode: ep, title: prevRow.title || window.Api.title(anime),
+        poster: prevRow.poster || (anime.coverImage && anime.coverImage.large) || null,
+        watched_at: now, position_sec: sec == null ? null : Math.floor(sec), source: source || null,
+      };
+      hist = [row, ...hist.filter((h) => !(Number(h.anime_id) === row.anime_id && Number(h.episode) === ep))].slice(0, 500);
+      if (cloud) {
+        const { error } = await sb.from("history").upsert({ ...row, user_id: S.user.id }, { onConflict: "user_id,anime_id,episode" });
+        if (error) throw new Error(error.message);
+      } else {
+        localStorage.setItem("tsukimi:hist:" + S.user.name, JSON.stringify(hist));
+      }
+    },
+    async clearPosition(animeId) {
+      const rows2 = hist.filter((h) => Number(h.anime_id) === Number(animeId) && h.position_sec > 0);
+      for (const r of rows2) {
+        r.position_sec = null;
+        if (cloud) await sb.from("history").update({ position_sec: null }).eq("user_id", S.user.id).eq("anime_id", r.anime_id).eq("episode", r.episode);
+      }
+      if (!cloud && S.user) localStorage.setItem("tsukimi:hist:" + S.user.name, JSON.stringify(hist));
     },
 
     async remove(animeId) {

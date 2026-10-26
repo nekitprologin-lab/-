@@ -106,7 +106,7 @@
         const j = await trFetch("en", "ru", part);
         return (j[0] || []).map((x) => x[0]).join("");
       }));
-      const res = out.join(" ").trim();
+      const res = out.join(" ").replace(/([.!?…»])(?=[А-ЯЁA-Z])/g, "$1 ").trim();
       if (!res) return null;
       try { localStorage.setItem(TR_KEY + key, res); } catch (e) {}
       return res;
