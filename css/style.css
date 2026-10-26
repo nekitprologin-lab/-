@@ -209,3 +209,6 @@ h2 { font-size: 20px; font-weight: 500; }
 .season small{font-size:11px;opacity:.5}
 .season.cur{border-color:var(--accent,#8b7bff);background:rgba(139,123,255,.15)}
 .season:hover{border-color:var(--accent,#8b7bff)}
+.skel{height:12px;border-radius:6px;margin:9px 0;background:linear-gradient(90deg,rgba(255,255,255,.06),rgba(255,255,255,.14),rgba(255,255,255,.06));background-size:200% 100%;animation:skel 1.2s linear infinite}
+.skel.s{width:60%}
+@keyframes skel{to{background-position:-200% 0}}

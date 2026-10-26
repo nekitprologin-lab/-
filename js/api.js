@@ -98,11 +98,10 @@
     }
     if (cur) parts.push(cur);
     try {
-      const out = [];
-      for (const part of parts.slice(0, 4)) {
+      const out = await Promise.all(parts.slice(0, 4).map(async (part) => {
         const j = await trFetch("en", "ru", part);
-        out.push((j[0] || []).map((x) => x[0]).join(""));
-      }
+        return (j[0] || []).map((x) => x[0]).join("");
+      }));
       const res = out.join(" ").trim();
       if (!res) return null;
       try { localStorage.setItem(TR_KEY + key, res); } catch (e) {}

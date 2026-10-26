@@ -278,7 +278,7 @@
               ${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${lib.status === k ? "selected" : ""}>${v}</option>`).join("")}
             </select>
           </div>
-          <div class="desc" id="desc">${esc((m.description || "Описания пока нет.").replace(/<[^>]*>/g, ""))}</div>
+          <div class="desc" id="desc">${m.description ? '<div class="skel"></div><div class="skel"></div><div class="skel s"></div>' : "Описания пока нет."}</div>
         </div>
       </div>
       <div class="wrap" style="padding-top:0">
@@ -304,18 +304,19 @@
       const d = $("#desc");
       if (!d) return;
       d.textContent = text;
-      if (auto) d.insertAdjacentHTML("beforeend", `<div class="muted" style="font-size:12px;margin-top:8px">Автоматический перевод</div>`);
     };
-    Api.russian(m.idMal).then(async (r) => {
-      if (!$("#h1")) return;
-      if (r && r.name && $("#ru")) {
-        $("#ru").textContent = [r.name, m.title.romaji].filter((x, i, a) => x && x !== Api.title(m) && a.indexOf(x) === i).join(" · ");
-      }
-      if (r && r.description) return showDesc(r.description, false);
-      if (m.description) {
-        const ru = await Api.translate(m.description, "d" + m.id);
-        if (ru && $("#desc")) showDesc(ru, true);
-      }
+    // перевод описания стартует сразу, не дожидаясь Shikimori; на экране — заглушка, а не английский текст
+    const plain = (m.description || "").replace(/<[^>]*>/g, "");
+    let done = false;
+    const finish = (text, auto) => { if (done || !$("#desc")) return; done = true; showDesc(text, auto); };
+    if (m.description) {
+      Api.translate(m.description, "d" + m.id).then((ru) => { if (ru) finish(ru, true); });
+      setTimeout(() => finish(plain, false), 9000); // если перевод не пришёл — показываем оригинал
+    }
+    Api.russian(m.idMal).then((r) => {
+      if (!$("#h1") || !r) return;
+      if (r.name && $("#ru")) $("#ru").textContent = [r.name, m.title.romaji].filter((x, i, a) => x && x !== Api.title(m) && a.indexOf(x) === i).join(" · ");
+      if (r.description) finish(r.description, false);
     });
 
     const needLogin = () => { toast("Сначала войди"); location.hash = "#/login"; };
@@ -859,6 +860,18 @@
     location.hash = q ? "#/search?q=" + encodeURIComponent(q) : "#/search";
     $("#navQ").blur();
   };
+
+  // заранее готовим описание, пока курсор над карточкой
+  const warmed = new Set();
+  const warm = (e) => {
+    const a = e.target.closest && e.target.closest('a[href^="#/anime/"]');
+    const id = a && (a.getAttribute("href").match(/#\/anime\/(\d+)/) || [])[1];
+    if (!id || warmed.has(id)) return;
+    warmed.add(id);
+    Api.detail(id).then((d) => d && d.description && Api.translate(d.description, "d" + id)).catch(() => {});
+  };
+  document.addEventListener("mouseover", warm);
+  document.addEventListener("touchstart", warm, { passive: true });
 
   window.addEventListener("hashchange", route);
   Store.init().catch((e) => toast(e.message)).finally(route);
