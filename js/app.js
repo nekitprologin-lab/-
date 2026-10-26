@@ -477,6 +477,8 @@
       ["Постеры AniList", "https://s4.anilist.co/"],
       ["Русские названия (Shikimori)", "https://shikimori.one/"],
       ["Плеер Kodik", "https://kodik.info/"],
+      ["Плеер Kodik, зеркало 2 (kodik.cc)", "https://kodik.cc/"],
+      ["Плеер Kodik, зеркало 3 (aniqit.com)", "https://aniqit.com/"],
       ["Шрифты Google", "https://fonts.googleapis.com/"],
       ["Библиотека входа (jsDelivr)", "https://cdn.jsdelivr.net/"],
     ];

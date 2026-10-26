@@ -15,5 +15,8 @@ window.APP_CONFIG = {
   // замени ссылку здесь или добавь ещё один источник, ничего больше править не нужно.
   PLAYERS: [
     { name: "Kodik", url: "https://kodik.info/find-player?shikimoriID={mal_id}&episode={episode}" },
+    // Запасные адреса того же сервиса: если основной блокирует провайдер, пробуй их через переключатель «Источник».
+    { name: "Kodik (зеркало 2)", url: "https://kodik.cc/find-player?shikimoriID={mal_id}&episode={episode}" },
+    { name: "Kodik (зеркало 3)", url: "https://aniqit.com/find-player?shikimoriID={mal_id}&episode={episode}" },
   ],
 };
