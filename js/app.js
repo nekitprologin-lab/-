@@ -484,7 +484,11 @@
         ${section("Серии", `<div class="eps">${Array.from({ length: total }, (_, i) => `<button type="button" class="ep ${i + 1 === resEp ? "cur" : ""}" data-rep="${i + 1}">${i + 1}</button>`).join("")}</div>`)}
         <p class="muted" style="max-width:70ch;margin-top:12px">Резервный плеер без русской озвучки. Если серия не открывается, попробуй другой язык.</p>`;
       history.replaceState(null, "", "#/watch/" + m.id + "/" + resEp);
-      if (Store.user) Store.addHistory(m, resEp).catch((err) => toast(err.message));
+      if (Store.user) {
+        Store.addHistory(m, resEp).catch((err) => toast(err.message));
+        const lib0 = Store.get(m.id) || {};
+        if (!lib0.status || lib0.status === "planned") Store.save(m, { status: "watching", episode: resEp }).catch(() => {});
+      }
     }
     // ---- Источник 2: Kodik через шлюз на Cloudflare Workers ----
     const gateCache = (window.__gateCache = window.__gateCache || new Map());
@@ -558,6 +562,10 @@
         }
         box.innerHTML = `<iframe src="${esc(src)}" title="Kodik"${sb} allowfullscreen="true" allow="autoplay *; fullscreen *"></iframe>`;
         kodikFrame = box.querySelector("iframe");
+        if (Store.user) {
+          const lib0 = Store.get(m.id) || {};
+          if (!lib0.status || lib0.status === "planned") Store.save(m, { status: "watching" }).catch(() => {});
+        }
       });
     }
 
@@ -763,27 +771,47 @@
     const hist = Store.history();
     const tabs = [["liked", "Нравится"], ...Object.entries(STATUS), ["history", "История"]];
     const count = (k) => (k === "history" ? hist.length : all.filter((r) => (k === "liked" ? r.liked : r.status === k)).length);
+    const fmt = (iso) => { try { return new Date(iso).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
+    const stagger = (html, i) => html.replace('<a class="card"', `<a class="card in" style="--i:${Math.min(i, 24)}"`);
+    const emptyText = {
+      liked: "Нажми «♡ Нравится» на странице аниме, и оно появится здесь.",
+      watching: "Здесь будет то, что ты смотришь сейчас. Откроешь серию, и аниме добавится само.",
+      planned: "Сюда попадает то, что ты собираешься посмотреть. Выбери «В планах» на странице аниме.",
+      completed: "Отметь уже просмотренное, и по нему подберутся рекомендации.",
+      dropped: "Пока ничего не брошено.",
+      history: "Открытые серии появятся здесь.",
+    };
     let body;
     if (tab === "history") {
-      const fmt = (iso) => { try { return new Date(iso).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
       body = hist.length
-        ? `<div class="friend-list">${hist.map((h) => `<a class="friend" href="#/watch/${h.anime_id}/${h.episode}">
-            ${h.poster ? `<img src="${esc(h.poster)}" alt="" loading="lazy">` : ""}
-            <div><b>${esc(h.title || "Аниме")}</b><div class="muted">Серия ${esc(h.episode)} · ${esc(fmt(h.watched_at))}</div></div></a>`).join("")}</div>`
-        : `<div class="empty">Ты пока ничего не смотрел. Открытые серии появятся здесь.</div>`;
+        ? `<div class="grid lib-grid">${hist.map((h, i) => stagger(`<a class="card" href="#/watch/${h.anime_id}/${h.episode}">
+            <div class="poster">${h.poster ? `<img src="${esc(h.poster)}" alt="" loading="lazy">` : ""}</div>
+            <div class="name">${esc(h.title || "Аниме")}</div>
+            <div class="sub">Серия ${esc(h.episode)}${h.position_sec > 10 ? " · " + mmss(h.position_sec) : ""}</div>
+            <div class="sub">${esc(fmt(h.watched_at))}</div></a>`, i)).join("")}</div>`
+        : "";
     } else {
-      const list = all
-        .filter((r) => (tab === "liked" ? r.liked : r.status === tab))
-        .sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1));
-      body = list.length
-        ? `<div class="grid">${list.map((r) => libCard(r, r.episode ? "Серия " + r.episode : "")).join("")}</div>`
-        : `<div class="empty">Здесь пока пусто. Найди аниме в <a href="#/search">каталоге</a> и добавь его в список.</div>`;
+      const list = all.filter((r) => (tab === "liked" ? r.liked : r.status === tab)).sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1));
+      body = list.length ? `<div class="grid lib-grid">${list.map((r, i) => stagger(libCard(r, r.episode ? "Серия " + r.episode : ""), i)).join("")}</div>` : "";
     }
-    app.innerHTML = `<div class="wrap">
-      <h1 style="font-size:26px">Моя библиотека</h1>
-      <div class="chips">${tabs.map(([k, v]) => `<a class="chip ${k === tab ? "on" : ""}" href="#/library?tab=${k}">${v} · ${count(k)}</a>`).join("")}</div>
-      <div style="margin-top:24px">${body}</div>
+    if (!body) {
+      body = `<div class="lib-empty"><div class="moon"></div><p>${esc(emptyText[tab] || "Пока пусто.")}</p>
+        <div class="actions" style="justify-content:center"><a class="btn primary" href="#/search">Открыть каталог</a>${tab === "completed" ? `<button class="btn" type="button" id="libAdd">Добавить просмотренное</button>` : ""}</div></div>`;
+    }
+    // «продолжить»: последняя открытая серия
+    const last = hist[0];
+    const lp = last && Store.position(last.anime_id);
+    const cont = last ? `<a class="lib-cont" href="#/watch/${last.anime_id}/${last.episode}">
+        ${last.poster ? `<img src="${esc(last.poster)}" alt="">` : ""}
+        <div><span class="muted">Продолжить просмотр</span><b>${esc(last.title || "Аниме")}</b>
+        <span class="muted">Серия ${esc(last.episode)}${lp && lp.ep === String(last.episode) ? " · с " + mmss(lp.t) : ""}</span></div><i>▶</i></a>` : "";
+    app.innerHTML = `<div class="wrap lib">
+      <div class="lib-head"><h1>Библиотека</h1><span class="muted">${all.length} аниме · ${hist.length} серий в истории</span></div>
+      ${cont}
+      <div class="lib-tabs" role="tablist">${tabs.map(([k, v]) => `<a role="tab" class="${k === tab ? "on" : ""}" href="#/library?tab=${k}">${v}<em>${count(k)}</em></a>`).join("")}</div>
+      <div class="lib-body">${body}</div>
     </div>`;
+    const add = $("#libAdd"); if (add) add.onclick = openAddAnime;
   }
 
   async function pageFriends() {
@@ -1018,12 +1046,122 @@
     }
   }
 
-  $("#navSearch").onsubmit = (e) => {
-    e.preventDefault();
-    const q = $("#navQ").value.trim();
-    location.hash = q ? "#/search?q=" + encodeURIComponent(q) : "#/search";
-    $("#navQ").blur();
+  // ---------- живой поиск в шапке ----------
+  const form = $("#navSearch"), qIn = $("#navQ");
+  const sgBox = document.createElement("div");
+  sgBox.id = "suggest"; sgBox.className = "suggest"; sgBox.hidden = true;
+  sgBox.setAttribute("role", "listbox");
+  form.appendChild(sgBox);
+  let sgSeq = 0, sgTimer = null, sgItems = [], sgSel = -1, sgQ = "";
+  const hl = (text, q) => {
+    const safe = esc(text);
+    const words = q.split(/\s+/).filter((w) => w.length > 0).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    if (!words.length) return safe;
+    try { return safe.replace(new RegExp("(" + words.map((w) => esc(w)).join("|") + ")", "ig"), "<mark>$1</mark>"); } catch (e) { return safe; }
   };
+  const sgClose = () => { sgBox.hidden = true; sgSel = -1; };
+  const sgPaint = (loading) => {
+    const q = qIn.value.trim();
+    if (!q) return sgClose();
+    sgBox.hidden = false;
+    sgBox.classList.toggle("busy", !!loading);
+    if (!sgItems.length) {
+      sgBox.innerHTML = loading
+        ? [0, 1, 2].map(() => `<div class="sg-row sk"><i></i><div><b></b><span></span></div></div>`).join("")
+        : `<div class="sg-empty">Ничего не нашлось по «${esc(q)}». Попробуй другое написание или часть названия.</div>`;
+      return;
+    }
+    sgBox.innerHTML = sgItems.map((m, i) => `<a class="sg-row ${i === sgSel ? "sel" : ""}" role="option" href="#/anime/${m.id}" data-i="${i}" style="animation-delay:${i * 28}ms">
+        <img src="${esc(m.coverImage && (m.coverImage.medium || m.coverImage.large))}" alt="" loading="lazy">
+        <div class="sg-t"><b>${hl(Api.title(m), q)}</b><span>${esc([m.seasonYear, STATUS_FORMAT[m.format] || m.format, m.episodes ? m.episodes + " эп." : "", m.averageScore ? "★ " + (m.averageScore / 10).toFixed(1) : ""].filter(Boolean).join(" · "))}</span></div></a>`).join("")
+      + `<a class="sg-all" href="#/search?q=${encodeURIComponent(q)}">Все результаты по «${esc(q)}»</a>`;
+  };
+  const sgRun = async () => {
+    const q = qIn.value.trim();
+    if (!q) { sgItems = []; return sgClose(); }
+    sgQ = q;
+    const my = ++sgSeq;
+    sgPaint(true);
+    try {
+      const items = await Api.suggest(q);
+      if (my !== sgSeq) return;
+      sgItems = items; sgSel = -1; sgPaint(false);
+    } catch (e) {
+      if (my !== sgSeq) return;
+      sgItems = [];
+      sgBox.hidden = false;
+      sgBox.innerHTML = `<div class="sg-empty">Каталог сейчас не отвечает. Подожди пару секунд и продолжи ввод.</div>`;
+    }
+  };
+  qIn.addEventListener("input", () => {
+    clearTimeout(sgTimer);
+    const q = qIn.value.trim();
+    if (!q) { sgSeq++; sgItems = []; return sgClose(); }
+    sgTimer = setTimeout(sgRun, 140);
+  });
+  qIn.addEventListener("focus", () => { if (qIn.value.trim() && sgItems.length) sgPaint(false); });
+  qIn.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { sgClose(); qIn.blur(); }
+    else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !sgBox.hidden && sgItems.length) {
+      e.preventDefault();
+      sgSel = (sgSel + (e.key === "ArrowDown" ? 1 : -1) + sgItems.length) % sgItems.length;
+      sgPaint(false);
+      const el = sgBox.querySelector(".sg-row.sel"); if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
+    }
+  });
+  sgBox.addEventListener("click", (e) => { if (e.target.closest("a")) { sgClose(); qIn.blur(); } });
+  document.addEventListener("click", (e) => { if (!form.contains(e.target)) sgClose(); });
+  window.addEventListener("hashchange", sgClose);
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const q = qIn.value.trim();
+    if (sgSel >= 0 && sgItems[sgSel]) { location.hash = "#/anime/" + sgItems[sgSel].id; sgClose(); qIn.blur(); return; }
+    location.hash = q ? "#/search?q=" + encodeURIComponent(q) : "#/search";
+    sgClose();
+    qIn.blur();
+  };
+
+  // ---------- ряды: перетаскивание мышью и стрелки ----------
+  function enhanceRows() {
+    app.querySelectorAll(".row:not(.enh)").forEach((row) => {
+      row.classList.add("enh");
+      const wrap = document.createElement("div");
+      wrap.className = "row-wrap";
+      row.parentNode.insertBefore(wrap, row);
+      wrap.appendChild(row);
+      wrap.insertAdjacentHTML("beforeend", `<button type="button" class="row-btn prev" aria-label="Назад">‹</button><button type="button" class="row-btn next" aria-label="Дальше">›</button>`);
+      const prev = wrap.querySelector(".prev"), next = wrap.querySelector(".next");
+      const upd = () => {
+        prev.classList.toggle("off", row.scrollLeft < 8);
+        next.classList.toggle("off", row.scrollLeft + row.clientWidth >= row.scrollWidth - 8);
+        wrap.classList.toggle("at-end", row.scrollLeft + row.clientWidth >= row.scrollWidth - 8);
+      };
+      row.addEventListener("scroll", upd, { passive: true });
+      setTimeout(upd, 60); setTimeout(upd, 600);
+      const step = () => Math.max(240, row.clientWidth * 0.85);
+      prev.onclick = () => row.scrollBy({ left: -step(), behavior: "smooth" });
+      next.onclick = () => row.scrollBy({ left: step(), behavior: "smooth" });
+      // перетаскивание мышью (на сенсорных экранах работает обычная прокрутка пальцем)
+      let down = false, sx = 0, sl = 0, moved = 0;
+      row.addEventListener("pointerdown", (e) => {
+        if (e.pointerType !== "mouse" || e.button !== 0) return;
+        down = true; moved = 0; sx = e.clientX; sl = row.scrollLeft;
+      });
+      window.addEventListener("pointermove", (e) => {
+        if (!down) return;
+        const dx = e.clientX - sx;
+        moved = Math.max(moved, Math.abs(dx));
+        if (moved > 5) { row.classList.add("dragging"); row.scrollLeft = sl - dx; }
+      });
+      const up = () => { if (down) { down = false; setTimeout(() => row.classList.remove("dragging"), 0); } };
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", up);
+      // после перетаскивания клик по карточке не должен открывать аниме
+      row.addEventListener("click", (e) => { if (moved > 5) { e.preventDefault(); e.stopPropagation(); moved = 0; } }, true);
+      row.addEventListener("dragstart", (e) => e.preventDefault());
+    });
+  }
+  new MutationObserver(enhanceRows).observe(app, { childList: true, subtree: true });
 
   // заранее готовим описание, пока курсор над карточкой
   const warmed = new Set();
@@ -1032,7 +1170,11 @@
     const id = a && (a.getAttribute("href").match(/#\/anime\/(\d+)/) || [])[1];
     if (!id || warmed.has(id)) return;
     warmed.add(id);
-    Api.detail(id).then((d) => d && d.description && Api.translate(d.description, "d" + id)).catch(() => {});
+    // не нагружаем AniList: готовим описание, только если курсор задержался на карточке
+    setTimeout(() => {
+      if (!a.matches(":hover")) { warmed.delete(id); return; }
+      Api.detail(id).then((d) => d && d.description && Api.translate(d.description, "d" + id)).catch(() => {});
+    }, 350);
   };
   document.addEventListener("mouseover", warm);
   document.addEventListener("touchstart", warm, { passive: true });

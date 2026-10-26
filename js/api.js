@@ -149,18 +149,40 @@
   async function gql(query, variables) {
     const key = JSON.stringify([query, variables]);
     if (cache.has(key)) return cache.get(key);
-    const res = await fetch(URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ query, variables }),
-    });
-    const json = await res.json().catch(() => null);
-    if (!res.ok || !json || json.errors) {
-      const detail = json && json.errors && json.errors[0] && json.errors[0].message;
-      throw new Error("AniList вернул ошибку " + res.status + (detail ? ": " + detail : ""));
+    let lastErr;
+    // AniList ограничивает число запросов (429) и иногда отвечает медленно: ждём и повторяем, а не сдаёмся сразу
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      try {
+        const res = await fetch(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ query, variables }),
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
+        if (res.status === 429 || res.status >= 500) {
+          const wait = Math.min(4, Number(res.headers && res.headers.get && res.headers.get("Retry-After")) || 1.5 * (attempt + 1));
+          lastErr = new Error("AniList перегружен (" + res.status + "), повторяю…");
+          await new Promise((r) => setTimeout(r, wait * 1000));
+          continue;
+        }
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json || json.errors) {
+          const detail = json && json.errors && json.errors[0] && json.errors[0].message;
+          throw new Error("AniList вернул ошибку " + res.status + (detail ? ": " + detail : ""));
+        }
+        cache.set(key, json.data);
+        return json.data;
+      } catch (e) {
+        clearTimeout(timer);
+        lastErr = e.name === "AbortError" ? new Error("AniList долго не отвечает") : e;
+        if (/вернул ошибку/.test(lastErr.message)) throw lastErr; // ошибка запроса повторять бессмысленно
+        await new Promise((r) => setTimeout(r, 600));
+      }
     }
-    cache.set(key, json.data);
-    return json.data;
+    throw lastErr || new Error("AniList недоступен");
   }
 
   const PAGE_Q = `query($page:Int,$perPage:Int,$search:String,$genres:[String],$year:Int,$sort:[MediaSort],$season:MediaSeason,$ids:[Int],$mals:[Int]){
@@ -225,6 +247,21 @@
       if (!add.length) return base;
       // найденное по русскому названию показываем первым
       return { items: [...more.items.filter((m) => add.includes(m)), ...base.items, ...byEn.items.filter((m) => add.includes(m))], hasNext: base.hasNext };
+    },
+    // подсказки при вводе: короткий запрос, результат запоминается по тексту
+    _sg: new Map(),
+    async suggest(q) {
+      const k = q.trim().toLowerCase();
+      if (!k) return [];
+      if (this._sg.has(k)) return this._sg.get(k);
+      let items;
+      if (hasCyr(k)) items = (await this.search({ q })).items.slice(0, 8);
+      else {
+        const d = await gql(`query($s:String){Page(perPage:8){media(search:$s,type:ANIME,isAdult:false,sort:SEARCH_MATCH){ id idMal synonyms title{romaji english} coverImage{medium} format seasonYear averageScore episodes }}}`, { s: q.trim() });
+        items = d.Page.media;
+      }
+      this._sg.set(k, items);
+      return items;
     },
     byGenre: (genre, perPage = 25) =>
       page({ perPage, genres: [genre], sort: ["POPULARITY_DESC"] }).then((r) => r.items),
