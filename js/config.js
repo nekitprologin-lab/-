@@ -8,15 +8,15 @@ window.APP_CONFIG = {
   SUPABASE_URL: "",
   SUPABASE_ANON_KEY: "",
 
-  // Источники видео. В ссылке можно использовать:
-  //   {mal_id}  — номер аниме (он же id на Shikimori и MyAnimeList)
-  //   {episode} — номер серии
-  // Плееры сторонних сервисов меняют адреса и пропадают. Если плеер не открывается,
-  // замени ссылку здесь или добавь ещё один источник, ничего больше править не нужно.
+  // Источники видео. Первый в списке открывается по умолчанию, остальные выбираются переключателем «Источник».
+  //   type "kinobox" — виджет Kinobox (kinobox.tv), ищет плееры по номеру Shikimori.
+  //     mode "isolated" — виджет работает в отдельной защищённой рамке и не видит данных сайта (безопаснее).
+  //     mode "direct"   — виджет подключается прямо в страницу (на случай, если в рамке не заработал).
+  //   url — обычный плеер по ссылке-шаблону. В ссылке можно использовать:
+  //     {mal_id}  — номер аниме (он же id на Shikimori)
+  //     {episode} — номер серии
   PLAYERS: [
-    { name: "Kodik", url: "https://kodik.info/find-player?shikimoriID={mal_id}&episode={episode}" },
-    // Запасные адреса того же сервиса: если основной блокирует провайдер, пробуй их через переключатель «Источник».
-    { name: "Kodik (зеркало 2)", url: "https://kodik.cc/find-player?shikimoriID={mal_id}&episode={episode}" },
-    { name: "Kodik (зеркало 3)", url: "https://aniqit.com/find-player?shikimoriID={mal_id}&episode={episode}" },
+    { name: "Kinobox", type: "kinobox", mode: "isolated" },
+    { name: "Kinobox (напрямую)", type: "kinobox", mode: "direct" },
   ],
 };

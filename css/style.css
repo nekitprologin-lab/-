@@ -138,7 +138,7 @@ h2 { font-size: 20px; font-weight: 500; }
 /* ---------- плеер ---------- */
 .watch { max-width: 1100px; margin: 0 auto; }
 .player { aspect-ratio: 16 / 9; background: #000; border-radius: var(--radius); overflow: hidden; }
-.player iframe { width: 100%; height: 100%; border: 0; }
+.player iframe, .player .kinobox_div { width: 100%; height: 100%; border: 0; }
 .player-empty { height: 100%; display: grid; place-items: center; text-align: center; padding: 24px; color: var(--muted); }
 .watch-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 16px 0; }
 .watch-bar .grow { flex: 1; min-width: 200px; }

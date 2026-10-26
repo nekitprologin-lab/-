@@ -306,6 +306,69 @@
     };
   }
 
+  // ---------- Kinobox ----------
+  const KINOBOX_JS = "https://kinobox.tv/kinobox.min.js";
+
+  function kinoboxError(box) {
+    box.innerHTML = `<div class="player-empty"><div>Kinobox не загрузился. Либо <b>kinobox.tv</b> недоступен из твоей сети, либо сервис изменил свой код.<br>Попробуй источник «Kinobox (напрямую)» или открой <a href="#/diag" style="text-decoration:underline">проверку доступности</a>.</div></div>`;
+  }
+
+  // Режим «напрямую»: скрипт Kinobox подключается в саму страницу (так, как описано в его инструкции).
+  function mountKinoboxDirect(box, id) {
+    box.innerHTML = `<div class="kinobox_div"></div>`;
+    const el = $(".kinobox_div", box);
+    const opts = { search: { shikimori: String(id) } };
+    const start = () => {
+      if (!el.isConnected || el.dataset.inited) return;
+      el.dataset.inited = "1";
+      try {
+        if (typeof window.kbox === "function") window.kbox(".kinobox_div", opts);
+        else if (typeof window.Kinobox === "function") new window.Kinobox(".kinobox_div", opts).init();
+        else throw new Error("Kinobox API не найден");
+      } catch (e) {
+        kinoboxError(box);
+      }
+    };
+    let s = document.querySelector("script[data-kinobox]");
+    if (s && s.dataset.state === "loaded") return start();
+    if (s && s.dataset.state === "error") return kinoboxError(box);
+    if (!s) {
+      s = document.createElement("script");
+      s.src = KINOBOX_JS;
+      s.async = true;
+      s.dataset.kinobox = "1";
+      s.dataset.state = "loading";
+      s.addEventListener("load", () => (s.dataset.state = "loaded"));
+      s.addEventListener("error", () => (s.dataset.state = "error"));
+      document.head.appendChild(s);
+    }
+    s.addEventListener("load", start, { once: true });
+    s.addEventListener("error", () => kinoboxError(box), { once: true });
+  }
+
+  // Режим «изолированно»: виджет живёт в рамке без доступа к странице, твоим аккаунтам и данным сайта.
+  function mountKinoboxIsolated(box, id) {
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>html,body{margin:0;height:100%;background:#000;color:#aaa;font:14px sans-serif}.kinobox_div{width:100%;height:100%}</style></head>
+<body><div class="kinobox_div"></div>
+<script src="${KINOBOX_JS}"><\/script>
+<script>
+(function () {
+  var o = { search: { shikimori: ${JSON.stringify(String(id))} } };
+  function go() {
+    try {
+      if (typeof kbox === "function") kbox(".kinobox_div", o);
+      else if (typeof Kinobox === "function") new Kinobox(".kinobox_div", o).init();
+      else document.body.textContent = "Kinobox не загрузился";
+    } catch (e) { document.body.textContent = "Kinobox не загрузился: " + e.message; }
+  }
+  if (document.readyState === "complete") go(); else window.addEventListener("load", go);
+})();
+<\/script></body></html>`;
+    box.innerHTML = `<iframe sandbox="allow-scripts allow-presentation allow-forms" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen title="Kinobox"></iframe>`;
+    $("iframe", box).srcdoc = doc;
+  }
+
   async function pageWatch(id, ep) {
     loading();
     const m = await Api.detail(id);
@@ -326,7 +389,7 @@
     let custom = "";
     try { custom = localStorage.getItem("tsukimi:player") || ""; } catch (e) {}
     const players = [...(custom ? [{ name: "Мой плеер", url: custom }] : []), ...(cfg.PLAYERS || [])];
-    const src = (p) => p.url.replace("{mal_id}", m.idMal || "").replace("{episode}", ep);
+    const src = (p) => (p.url || "").replace("{mal_id}", m.idMal || "").replace("{episode}", ep);
     const hasNext = !total || ep < total;
 
     let eps = "";
@@ -349,7 +412,7 @@
         <summary>Плеер не открывается?</summary>
         <p>Ошибка «сайт неожиданно разорвал соединение» значит, что сайт плеера недоступен из твоей сети. Его может блокировать провайдер, или он не пускает через VPN. Сайт Tsukimi тут ни при чём.</p>
         <ol>
-          <li>Нажми «Открыть в новой вкладке». Если и там ошибка, дело в сети.</li>
+          <li>Переключи «Источник» над видео: «Kinobox» и «Kinobox (напрямую)» работают по-разному.</li>
           <li>Включи или выключи VPN и обнови страницу.</li>
           <li>Вставь ссылку другого плеера ниже. В ссылке можно использовать <code>{mal_id}</code> и <code>{episode}</code>, они подставятся сами.</li>
         </ol>
@@ -366,13 +429,19 @@
     function mount(i) {
       const p = players[i];
       const box = $("#player");
+      const tab = $("#newTab");
       if (!p || !m.idMal) {
-        box.innerHTML = `<div class="player-empty"><div>${!m.idMal ? "Для этого аниме нет номера MyAnimeList, плеер подключить нельзя." : "Источники видео не настроены. Добавь ссылку плеера в js/config.js."}</div></div>`;
-        $("#newTab").style.display = "none";
+        box.innerHTML = `<div class="player-empty"><div>${!m.idMal ? "Для этого аниме нет номера MyAnimeList, плеер подключить нельзя." : "Источники видео не настроены. Добавь плеер в js/config.js."}</div></div>`;
+        tab.style.display = "none";
         return;
       }
+      if (p.type === "kinobox") {
+        tab.style.display = "none"; // у виджета нет одной ссылки, которую можно открыть отдельно
+        return p.mode === "direct" ? mountKinoboxDirect(box, m.idMal) : mountKinoboxIsolated(box, m.idMal);
+      }
+      tab.style.display = "";
       box.innerHTML = `<iframe src="${esc(src(p))}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="origin" title="Серия ${ep}"></iframe>`;
-      $("#newTab").href = src(p);
+      tab.href = src(p);
     }
     mount(0);
     const sel = $("#playerSel");
@@ -476,9 +545,8 @@
       ["Каталог AniList", "https://graphql.anilist.co/"],
       ["Постеры AniList", "https://s4.anilist.co/"],
       ["Русские названия (Shikimori)", "https://shikimori.one/"],
-      ["Плеер Kodik", "https://kodik.info/"],
-      ["Плеер Kodik, зеркало 2 (kodik.cc)", "https://kodik.cc/"],
-      ["Плеер Kodik, зеркало 3 (aniqit.com)", "https://aniqit.com/"],
+      ["Плеер Kinobox", "https://kinobox.tv/"],
+      ["Плеер Kodik (один из источников Kinobox)", "https://kodik.info/"],
       ["Шрифты Google", "https://fonts.googleapis.com/"],
       ["Библиотека входа (jsDelivr)", "https://cdn.jsdelivr.net/"],
     ];
