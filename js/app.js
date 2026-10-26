@@ -358,7 +358,7 @@
           <button class="btn" type="submit">Сохранить</button>
           ${custom ? `<button class="btn" type="button" id="resetPlayer">Сбросить</button>` : ""}
         </form>
-        <p class="muted">Ссылка сохраняется только в этом браузере.</p>
+        <p class="muted">Ссылка сохраняется только в этом браузере. <a href="#/diag" style="text-decoration:underline">Проверить, какие сервисы открываются у тебя</a></p>
       </details>
       ${total ? section("Серии", `<div class="eps">${eps}</div>`) : ""}
     </div>`;
@@ -470,6 +470,33 @@
     draw();
   }
 
+  // Проверка, какие сервисы открываются из сети пользователя (для случаев с блокировками и VPN).
+  async function pageDiag() {
+    const checks = [
+      ["Каталог AniList", "https://graphql.anilist.co/"],
+      ["Постеры AniList", "https://s4.anilist.co/"],
+      ["Русские названия (Shikimori)", "https://shikimori.one/"],
+      ["Плеер Kodik", "https://kodik.info/"],
+      ["Шрифты Google", "https://fonts.googleapis.com/"],
+      ["Библиотека входа (jsDelivr)", "https://cdn.jsdelivr.net/"],
+    ];
+    app.innerHTML = `<div class="wrap"><h1 style="font-size:26px">Проверка доступности</h1>
+      <p class="muted">Показывает, какие сервисы открываются из твоей сети прямо сейчас. Открой эту страницу без VPN и с VPN и сравни.</p>
+      <p class="muted">Этот сайт открыт по адресу: <b>${esc(location.host)}</b></p>
+      <div class="friend-list" style="margin-top:16px">${checks.map(([n], i) => `<div class="friend" id="d${i}"><div><b>${esc(n)}</b> <span class="muted">проверяю…</span></div></div>`).join("")}</div>
+      <p class="note">«Не открывается» значит, что соединение обрывается или блокируется до ответа сервиса.</p></div>`;
+    checks.forEach(async ([name, url], i) => {
+      const t0 = performance.now();
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000);
+      let ok = false;
+      try { await fetch(url, { mode: "no-cors", cache: "no-store", signal: ctrl.signal }); ok = true; } catch (e) {}
+      clearTimeout(timer);
+      const el = $("#d" + i);
+      if (el) el.innerHTML = `<div><b>${esc(name)}</b> — ${ok ? `<span style="color:var(--moon)">открывается</span> <span class="muted">${Math.round(performance.now() - t0)} мс</span>` : `<span style="color:var(--rose)">не открывается</span>`}</div>`;
+    });
+  }
+
   // ---------- шапка и роутер ----------
   function drawNav() {
     const hash = location.hash || "#/";
@@ -498,6 +525,7 @@
       else if (parts[0] === "library") pageLibrary(params);
       else if (parts[0] === "friends") await pageFriends();
       else if (parts[0] === "login") pageLogin();
+      else if (parts[0] === "diag") pageDiag();
       else app.innerHTML = `<div class="wrap"><div class="empty">Такой страницы нет. <a href="#/">На главную</a></div></div>`;
     } catch (e) {
       fail(e);
