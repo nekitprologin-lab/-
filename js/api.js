@@ -214,7 +214,7 @@
 
   // ---------- локальный индекс: поиск по буквам без ожидания сети ----------
   // Скачиваем ~300 самых популярных аниме один раз (хранится в браузере 3 дня) и ищем по ним мгновенно.
-  const IDX_KEY = "tsukimi:idx:v1";
+  const IDX_KEY = "tsukimi:idx:v2";
   let index = [];
   let idxHay = null;
   let idxPromise = null;
@@ -233,7 +233,7 @@
       const items = [];
       for (let p = 1; p <= 6; p += 2) {
         const parts = await Promise.all([p, p + 1].map((n) => gql(IDX_Q, { page: n }).then((d) => d.Page.media).catch(() => [])));
-        parts.flat().forEach((m) => items.push({ ...m, synonyms: (m.synonyms || []).slice(0, 6) }));
+        parts.flat().forEach((m) => items.push({ ...m, synonyms: [...(m.synonyms || []).filter(hasCyr), ...(m.synonyms || []).filter((x) => !hasCyr(x))].slice(0, 8) }));
         if (!parts.flat().length) break;
       }
       if (items.length > 50) {
