@@ -322,7 +322,10 @@
       Store.save(m, patch).catch((e) => toast(e.message));
     }
 
-    const players = cfg.PLAYERS || [];
+    // свой плеер (если задан) идёт первым, дальше источники из config.js
+    let custom = "";
+    try { custom = localStorage.getItem("tsukimi:player") || ""; } catch (e) {}
+    const players = [...(custom ? [{ name: "Мой плеер", url: custom }] : []), ...(cfg.PLAYERS || [])];
     const src = (p) => p.url.replace("{mal_id}", m.idMal || "").replace("{episode}", ep);
     const hasNext = !total || ep < total;
 
@@ -342,6 +345,21 @@
         ${hasNext ? `<a class="btn primary" href="#/watch/${m.id}/${ep + 1}">Следующая серия</a>` : `<button class="btn primary" id="doneBtn">Отметить просмотренным</button>`}
         <a class="btn" id="newTab" target="_blank" rel="noopener noreferrer">Открыть в новой вкладке</a>
       </div>
+      <details class="help">
+        <summary>Плеер не открывается?</summary>
+        <p>Ошибка «сайт неожиданно разорвал соединение» значит, что сайт плеера недоступен из твоей сети. Его может блокировать провайдер, или он не пускает через VPN. Сайт Tsukimi тут ни при чём.</p>
+        <ol>
+          <li>Нажми «Открыть в новой вкладке». Если и там ошибка, дело в сети.</li>
+          <li>Включи или выключи VPN и обнови страницу.</li>
+          <li>Вставь ссылку другого плеера ниже. В ссылке можно использовать <code>{mal_id}</code> и <code>{episode}</code>, они подставятся сами.</li>
+        </ol>
+        <form id="customPlayer" class="custom-player">
+          <input name="url" type="url" placeholder="https://…{mal_id}…{episode}" value="${esc(custom)}" aria-label="Ссылка плеера">
+          <button class="btn" type="submit">Сохранить</button>
+          ${custom ? `<button class="btn" type="button" id="resetPlayer">Сбросить</button>` : ""}
+        </form>
+        <p class="muted">Ссылка сохраняется только в этом браузере.</p>
+      </details>
       ${total ? section("Серии", `<div class="eps">${eps}</div>`) : ""}
     </div>`;
 
@@ -359,6 +377,19 @@
     mount(0);
     const sel = $("#playerSel");
     if (sel) sel.onchange = () => mount(Number(sel.value));
+
+    $("#customPlayer").onsubmit = (e) => {
+      e.preventDefault();
+      const url = new FormData(e.target).get("url").trim();
+      if (url && !/^https:\/\//i.test(url)) return toast("Ссылка должна начинаться с https://");
+      try { url ? localStorage.setItem("tsukimi:player", url) : localStorage.removeItem("tsukimi:player"); } catch (err) {}
+      route();
+    };
+    const reset = $("#resetPlayer");
+    if (reset) reset.onclick = () => {
+      try { localStorage.removeItem("tsukimi:player"); } catch (err) {}
+      route();
+    };
 
     const done = $("#doneBtn");
     if (done) done.onclick = async () => {
