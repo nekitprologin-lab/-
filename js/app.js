@@ -355,6 +355,11 @@
         <select class="select" id="qualitySel" aria-label="Качество" hidden></select>
       </div>
       <div class="srcbar" id="srcBar" role="tablist" aria-label="Источник видео" hidden></div>
+      <div class="tip" id="adTip" role="note" hidden>
+        <span class="tip-ico" aria-hidden="true">ⓘ</span>
+        <p>В плеере Kodik есть встроенная видеореклама. Чтобы смотреть без неё, рекомендуем использовать uBlock Origin или браузер со встроенным блоком (Brave / AdGuard).</p>
+        <button type="button" class="tip-x" id="adTipX" aria-label="Закрыть подсказку">×</button>
+      </div>
       <div class="player" id="player"><div class="player-empty"><div>Ищу «${esc(Api.title(m))}» в каталоге AniLibria…</div></div></div>
       <div class="watch-bar" id="navBar" hidden>
         <button class="btn" id="prevBtn" type="button">← Назад</button>
@@ -475,6 +480,8 @@
       $("#qualitySel").hidden = true;
       $("#navBar").hidden = true;
       epsBox.innerHTML = "";
+      // подсказка про рекламу видна только на «Источнике 2 (Kodik)» и пока её не закрыли
+      $("#adTip").hidden = n !== 2 || store.get("tsukimi:adtip") === "closed";
       if (n === 1) {
         if (found) return startNative();
         $("#epTitle").textContent = "Источник 1";
@@ -494,6 +501,7 @@
         }
       }
     }
+    $("#adTipX").onclick = () => { $("#adTip").hidden = true; store.set("tsukimi:adtip", "closed"); };
     srcBar.onclick = (ev) => {
       const b = ev.target.closest("[data-t]");
       if (b && Number(b.dataset.t) !== tab) setTab(Number(b.dataset.t));
