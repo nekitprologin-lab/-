@@ -105,6 +105,27 @@
     }
   }
 
+  // Запасной вариант, когда русского названия нигде нет: машинный перевод английского (кэш в браузере)
+  const TT_KEY = "tsukimi:trt:";
+  async function translateTitles(texts) {
+    const out = {};
+    const need = [];
+    [...new Set(texts.map((t) => String(t || "").trim()).filter((t) => t && !hasCyr(t)))].forEach((t) => {
+      let c = null;
+      try { c = localStorage.getItem(TT_KEY + t); } catch (e) {}
+      if (c) out[t] = c; else need.push(t);
+    });
+    for (let i = 0; i < need.length; i += 15) {
+      const chunk = need.slice(i, i + 15);
+      try {
+        const j = await timed("https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ru&dt=t&q=" + encodeURIComponent(chunk.join("\n")), 7000);
+        const res = (j[0] || []).map((x) => x[0]).join("").split("\n").map((x) => x.trim());
+        if (res.length === chunk.length) chunk.forEach((t, k) => { if (res[k]) { out[t] = res[k]; try { localStorage.setItem(TT_KEY + t, res[k]); } catch (e) {} } });
+      } catch (e) { break; }
+    }
+    return out;
+  }
+
   // пачка русских названий с Shikimori для карточек (если он доступен)
   const triedRu = new Set();
   async function ruBatch(mals) {
@@ -159,6 +180,7 @@
     setRu,
     ruBatch,
     translate,
+    translateTitles,
 
     trending: (perPage = 18) => page({ perPage, sort: ["TRENDING_DESC"] }).then((r) => r.items),
     thisSeason: (perPage = 18) => {

@@ -142,6 +142,11 @@
     html += `</div>`;
     app.innerHTML = html;
 
+    // название героя: если русского нет, показываем машинный перевод
+    if (hero && !Api.hasCyrillic(Api.title(hero))) {
+      const en = Api.title(hero);
+      Api.translateTitles([en]).then((tr) => { const h = $(".hero h1"); if (h && tr[en] && !Api.hasCyrillic(h.textContent)) h.textContent = tr[en]; });
+    }
     // описание героя (убираем html-теги из ответа API)
     if (hero) {
       Api.detail(hero.id).then((d) => {
@@ -312,6 +317,11 @@
         $("#h1").textContent = r.name;
         const alt = [Api.altTitle(m), m.title.romaji].filter((x, i, a) => x && x !== r.name && a.indexOf(x) === i).join(" · ");
         if ($("#ru")) $("#ru").textContent = alt;
+      }
+      if (!(r && r.name) && !Api.hasCyrillic($("#h1").textContent)) {
+        const tr = await Api.translateTitles([$("#h1").textContent]);
+        const t = tr[$("#h1").textContent.trim()];
+        if (t && $("#h1")) { const en = $("#h1").textContent; $("#h1").textContent = t; if ($("#ru")) $("#ru").textContent = [en, m.title.romaji].filter((x, i, a) => x && a.indexOf(x) === i).join(" · "); }
       }
       if (r && r.description) return showDesc(r.description, false);
       if (m.description) {
@@ -869,7 +879,14 @@
     if (!els.length) return;
     const apply = () => els.forEach((el) => { const ru = Api.ruByMal(el.dataset.mal); if (ru && el.isConnected) el.textContent = ru; });
     apply();
-    Api.ruBatch(els.map((el) => el.dataset.mal)).then(apply);
+    Api.ruBatch(els.map((el) => el.dataset.mal)).then(async () => {
+      apply();
+      // русского названия нигде нет — показываем машинный перевод
+      const left = els.filter((el) => el.isConnected && !Api.hasCyrillic(el.textContent));
+      if (!left.length) return;
+      const tr = await Api.translateTitles(left.map((el) => el.textContent));
+      left.forEach((el) => { const t = tr[el.textContent.trim()]; if (t && el.isConnected && !Api.hasCyrillic(el.textContent)) el.textContent = t; });
+    });
   }
   new MutationObserver(() => { clearTimeout(nameTimer); nameTimer = setTimeout(localizeNames, 250); }).observe(app, { childList: true, subtree: true });
 
