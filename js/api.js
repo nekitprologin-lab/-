@@ -50,20 +50,31 @@
     }
   }
 
-  // Поиск по неполному слову: AniList ищет только по целым словам («torad» ничего не находит), а MyAnimeList (через Jikan) ищет и по началу слова.
+  // Поиск по неполному слову: AniList ищет только по целым словам («torad» ничего не находит), а Kitsu и MyAnimeList (Jikan) ищут и по началу слова.
+  // Оба источника спрашиваем одновременно, берём номера MyAnimeList и достаём сами аниме из AniList.
   const jkCache = new Map();
-  let jkDownUntil = 0;
+  const srcDown = { kitsu: 0, jikan: 0 };
+  async function viaKitsu(k) {
+    const j = await timed("https://kitsu.io/api/edge/anime?filter[text]=" + encodeURIComponent(k) + "&page[limit]=8&include=mappings&fields[anime]=canonicalTitle,mappings&fields[mappings]=externalSite,externalId", 4500);
+    const map = new Map((j.included || []).map((x) => [x.id, x.attributes || {}]));
+    return (j.data || []).map((a) => {
+      const ids = ((a.relationships && a.relationships.mappings && a.relationships.mappings.data) || []).map((d) => map.get(d.id)).filter((x) => x && x.externalSite === "myanimelist/anime");
+      return ids[0] ? Number(ids[0].externalId) : 0;
+    }).filter(Boolean);
+  }
+  async function viaJikan(k) {
+    const j = await timed("https://api.jikan.moe/v4/anime?sfw=true&limit=10&q=" + encodeURIComponent(k), 4500);
+    return (j.data || []).map((x) => Number(x.mal_id)).filter(Boolean);
+  }
   async function jikanMals(q) {
     const k = q.trim().toLowerCase();
     if (k.length < 2 || hasCyr(k)) return [];
     if (jkCache.has(k)) return jkCache.get(k);
-    if (Date.now() < jkDownUntil) return [];
-    try {
-      const j = await timed("https://api.jikan.moe/v4/anime?sfw=true&limit=10&q=" + encodeURIComponent(k), 4500);
-      const ids = (j.data || []).map((x) => Number(x.mal_id)).filter(Boolean);
-      jkCache.set(k, ids);
-      return ids;
-    } catch (e) { jkDownUntil = Date.now() + 60000; return []; }
+    const run = (name, fn) => (Date.now() < srcDown[name] ? Promise.resolve([]) : fn(k).catch(() => { srcDown[name] = Date.now() + 60000; return []; }));
+    const [a, b2] = await Promise.all([run("kitsu", viaKitsu), run("jikan", viaJikan)]);
+    const ids = [...new Set([...a, ...b2])];
+    if (ids.length) jkCache.set(k, ids);
+    return ids;
   }
 
   // Shikimori иногда закрыт провайдером: после первой неудачи пару минут к нему не обращаемся
