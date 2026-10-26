@@ -173,7 +173,10 @@
     (Array.isArray(r) ? r : []).forEach((x) => setRu(x.id, x.russian));
   }
 
+  const PX_KEY = "tsukimi:alproxy:down";
   let proxyDownUntil = 0;
+  try { proxyDownUntil = Number(localStorage.getItem(PX_KEY)) || 0; } catch (e) {}
+  const proxyOff = (ms) => { proxyDownUntil = Date.now() + ms; try { localStorage.setItem(PX_KEY, String(proxyDownUntil)); } catch (e) {} };
   async function gql(query, variables) {
     const key = JSON.stringify([query, variables]);
     if (cache.has(key)) return cache.get(key);
@@ -190,8 +193,9 @@
           try {
             const pu = w.replace(/\/$/, "") + "/?al=1&q=" + encodeURIComponent(query) + "&v=" + encodeURIComponent(JSON.stringify(variables || {}));
             res = await fetch(pu, { signal: ctrl.signal });
-            if (res.status >= 500 && res.status !== 502 && !(res.headers && res.headers.get && /json/.test(res.headers.get("Content-Type") || ""))) { proxyDownUntil = Date.now() + 60000; res = null; }
-          } catch (e) { proxyDownUntil = Date.now() + 60000; res = null; }
+            // любой неуспех прокси (AniList банит адреса Cloudflare: 403, 429, 5xx) — идём напрямую, а прокси на полчаса отключаем
+            if (!res.ok) { proxyOff(res.status === 403 ? 6 * 3600000 : 30 * 60000); res = null; }
+          } catch (e) { proxyOff(60000); res = null; }
         }
         if (!res) {
           res = await fetch(URL, {
