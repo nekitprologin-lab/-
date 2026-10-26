@@ -179,9 +179,10 @@
   window.Api = {
     GENRES,
     genreRu: (g) => GENRES_RU[g] || g,
-    title: (m) => ruName(m) || (m.title && (m.title.english || m.title.romaji)) || "Без названия",
+    // название остаётся английским (чтобы было понятно, о чём речь), русское — как подпись
+    title: (m) => (m.title && (m.title.english || m.title.romaji)) || "Без названия",
     // запасное (не русское) название, чтобы показать его под русским
-    altTitle: (m) => (m.title && (m.title.english || m.title.romaji)) || "",
+    altTitle: (m) => ruName(m) || "",
     hasCyrillic: hasCyr,
     ruByMal,
     setRu,
