@@ -343,6 +343,74 @@
     return hlsLoading;
   }
 
+  // ---------- Запасной источник: Kinobox ----------
+  // Виджет работает в изолированной рамке без доступа к странице и данным сайта, а результат
+  // (получилось или нет) сообщает через postMessage. Kodik исключён жёстко, даже если он попадёт в настройки.
+  const KINOBOX_EXCLUDE = ["kodik"];
+
+  // -> Promise<boolean>: true, если виджет показал плеер; false, если скрипт не загрузился, упал или молчит
+  function mountKinobox(box, m) {
+    const k = cfg.KINOBOX || {};
+    if (!k.enabled || !k.script || !m.idMal) return Promise.resolve(false);
+
+    const players = (k.players || []).filter((p) => !KINOBOX_EXCLUDE.includes(String(p).toLowerCase()));
+    const opts = { search: { shikimori: String(m.idMal), title: Api.title(m) }, players };
+    const optsJson = JSON.stringify(opts).replace(/</g, "\\u003c");
+    const token = Math.random().toString(36).slice(2);
+
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>html,body{margin:0;height:100%;background:#000}.kinobox_div{width:100%;height:100%}</style>
+<script>var T=${JSON.stringify(token)};function post(s){parent.postMessage({kinobox:s,token:T},"*");}<\/script></head>
+<body><div class="kinobox_div"></div>
+<script src="${esc(k.script)}" onerror="window.kbFail=1;post('fail')"><\/script>
+<script>
+(function () {
+  if (window.kbFail) return;
+  var o = ${optsJson};
+  try {
+    if (typeof kbox === "function") kbox(".kinobox_div", o);
+    else if (typeof Kinobox === "function") new Kinobox(".kinobox_div", o).init();
+    else { post("fail"); return; }
+  } catch (e) { post("fail"); return; }
+  var n = 0, t = setInterval(function () {
+    n++;
+    if (document.querySelector(".kinobox_div").children.length) { clearInterval(t); post("ok"); }
+    else if (n > 16) { clearInterval(t); post("fail"); }
+  }, 500);
+})();
+<\/script></body></html>`;
+
+    return new Promise((resolve) => {
+      const frame = document.createElement("iframe");
+      frame.setAttribute("sandbox", "allow-scripts allow-presentation allow-forms");
+      frame.setAttribute("allow", "autoplay; fullscreen; picture-in-picture");
+      frame.setAttribute("allowfullscreen", "");
+      frame.title = "Запасной источник";
+      let done = false;
+      const finish = (ok) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        window.removeEventListener("message", onMsg);
+        const wait = $("#kbWait", box);
+        if (wait) wait.remove();
+        if (!ok) frame.remove();
+        resolve(ok);
+      };
+      const onMsg = (e) => {
+        if (e.source !== frame.contentWindow || !e.data || e.data.token !== token) return;
+        if (e.data.kinobox === "ok") finish(true);
+        else if (e.data.kinobox === "fail") finish(false);
+      };
+      const timer = setTimeout(() => finish(false), k.timeoutMs || 12000);
+      window.addEventListener("message", onMsg);
+      box.innerHTML = "";
+      box.appendChild(frame);
+      box.insertAdjacentHTML("beforeend", `<div class="player-note" id="kbWait">Этого аниме нет в AniLibria. Ищу в запасных источниках…</div>`);
+      frame.srcdoc = doc;
+    });
+  }
+
   async function pageWatch(id, epParam) {
     loading();
     const m = await Api.detail(id);
@@ -366,18 +434,43 @@
     const note = (html) => { if (box.isConnected) box.innerHTML = `<div class="player-empty"><div>${html}</div></div>`; };
     const overlay = (text) => { if (box.isConnected) box.insertAdjacentHTML("beforeend", `<div class="player-note">${esc(text)}</div>`); };
 
-    // 1) ищем релиз в AniLibria
-    let found;
+    // последняя ступень каскада: не ошибка, а трейлер (если он есть) и понятное объяснение
+    const unavailable = (text) => {
+      const yt = m.trailer && String(m.trailer.site).toLowerCase() === "youtube" && /^[\w-]{6,20}$/.test(m.trailer.id) ? m.trailer.id : null;
+      if (yt) {
+        box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${yt}" title="Трейлер" allow="fullscreen; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+        $("#epsBox").innerHTML = `<p class="muted" style="max-width:70ch">${text} Пока можно посмотреть трейлер.</p>`;
+      } else {
+        note(text);
+      }
+    };
+
+    // ступень 1: AniLibria, прямой поток m3u8
+    let found = null;
+    let reason = `Серий «${esc(Api.title(m))}» нет в AniLibria.`;
     try {
       found = await Libria.find(m);
     } catch (e) {
-      return note(`AniLibria не отвечает: ${esc(e.message)}.<br>Открой <a href="#/diag" style="text-decoration:underline">проверку доступности</a>, чтобы понять, что закрыто в твоей сети.`);
+      reason = `AniLibria не отвечает (${esc(e.message)}), <a href="#/diag" style="text-decoration:underline">что открывается у тебя</a>.`;
     }
     if (!box.isConnected) return; // пока искали, ушли на другую страницу
-    if (!found) return note("Этого аниме нет в каталоге AniLibria, поэтому видео для него не подключить.<br>Выбери другое аниме в <a href=\"#/search\" style=\"text-decoration:underline\">каталоге</a>.");
-    if (found.blocked) return note("AniLibria закрыла это аниме от просмотра (по требованию правообладателя или из-за региона).");
+    if (found && found.blocked) {
+      // закрыто правообладателем или регионом: обходить это запасными источниками не будем
+      return unavailable("AniLibria закрыла это аниме от просмотра по требованию правообладателя или из-за региона.");
+    }
+    if (found && !found.episodes.length) {
+      found = null;
+      reason = "У AniLibria пока нет загруженных серий этого аниме.";
+    }
+
+    // ступень 2: запасной источник Kinobox (без Kodik); пока он недоступен, сразу идём дальше
+    if (!found) {
+      const ok = await mountKinobox(box, m);
+      if (!box.isConnected || ok) return;
+      // ступень 3: заглушка с трейлером вместо ошибки
+      return unavailable(reason + " Запасные источники тоже не ответили.");
+    }
     const eps = found.episodes;
-    if (!eps.length) return note("У AniLibria пока нет загруженных серий этого аниме.");
 
     // 2) подключаем hls.js
     try {
