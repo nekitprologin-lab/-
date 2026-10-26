@@ -361,11 +361,12 @@ function kbLog(t){var d=document.getElementById("kb_log");if(!d){d=document.crea
 window.onerror=function(m){kbLog("Ошибка в скрипте Kinobox: "+m);};
 <\/script></head>
 <body><div class="kinobox_div"></div>
-<script src="${scriptUrl}" onerror="kbLog('Скрипт Kinobox не загрузился: адрес скрипта недоступен из твоей сети или больше не существует.')"><\/script>
+<script src="${scriptUrl}" onerror="window.kbFail=1;kbLog('Скрипт Kinobox не загрузился: по этому адресу его больше нет (ошибка 404) или адрес недоступен из твоей сети.')"><\/script>
 <script>
 (function () {
   var o = { search: { shikimori: ${JSON.stringify(String(id))} } };
   function go() {
+    if (window.kbFail) return;
     try {
       if (typeof kbox === "function") kbox(".kinobox_div", o);
       else if (typeof Kinobox === "function") new Kinobox(".kinobox_div", o).init();
