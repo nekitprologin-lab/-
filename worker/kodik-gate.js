@@ -39,6 +39,17 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
     if (request.method !== "GET") return json({ error: "method not allowed" }, 405, headers);
 
+    // Прокси к Shikimori для русских названий (у части провайдеров он закрыт): ?shiki=/animes?ids=1,2
+    const sp = new URL(request.url).searchParams.get("shiki");
+    if (sp) {
+      if (!/^\/animes(\/\d{1,9})?(\?[\w=&,%.\-+]*)?$/.test(sp)) return json({ error: "bad path" }, 400, headers);
+      const r = await fetch("https://shikimori.one/api" + sp, {
+        headers: { "User-Agent": CHROME_UA, Accept: "application/json" },
+        cf: { cacheTtl: 86400, cacheEverything: true },
+      });
+      return new Response(await r.text(), { status: r.status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400", ...headers } });
+    }
+
     const id = new URL(request.url).searchParams.get("id") || "";
     if (!/^\d{1,9}$/.test(id)) return json({ error: "id must be a number" }, 400, headers);
 

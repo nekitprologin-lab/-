@@ -54,6 +54,10 @@
   let shikiDownUntil = 0;
   async function shiki(path, ms = 3000) {
     if (Date.now() < shikiDownUntil) return null;
+    const w = (window.APP_CONFIG || {}).WORKER_URL;
+    if (w) { // сначала через наш Worker: он работает и там, где Shikimori закрыт провайдером
+      try { return await timed(w.replace(/\/$/, "") + "/?shiki=" + encodeURIComponent(path).replace(/%2F/g, "/").replace(/%3F/g, "?").replace(/%3D/g, "=").replace(/%26/g, "&").replace(/%2C/g, ","), Math.max(ms, 5000)); } catch (e) {}
+    }
     try { return await timed("https://shikimori.one/api" + path, ms); } catch (e) { shikiDownUntil = Date.now() + 120000; return null; }
   }
 
@@ -231,10 +235,15 @@
       try {
         const ctrl = new AbortController();
         const t = setTimeout(() => ctrl.abort(), 5000);
-        const res = await fetch(`https://shikimori.one/api/animes/${malId}`, { signal: ctrl.signal });
+        const w = (window.APP_CONFIG || {}).WORKER_URL;
+        let j = null;
+        if (w) { try { const r = await fetch(w.replace(/\/$/, "") + "/?shiki=/animes/" + malId, { signal: ctrl.signal }); if (r.ok) j = await r.json(); } catch (e) {} }
+        if (!j) {
+          const res = await fetch(`https://shikimori.one/api/animes/${malId}`, { signal: ctrl.signal });
+          if (!res.ok) { clearTimeout(t); return null; }
+          j = await res.json();
+        }
         clearTimeout(t);
-        if (!res.ok) return null;
-        const j = await res.json();
         const text = (j.description || "")
           .replace(/\[\/?[a-z_]+(=[^\]]*)?\]/gi, "")
           .replace(/\s+\n/g, "\n")
