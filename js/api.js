@@ -18,7 +18,7 @@
   };
 
   const LITE = `id idMal synonyms title{romaji english} coverImage{large color} averageScore episodes status format seasonYear genres bannerImage`;
-  const FULL = `${LITE} description(asHtml:false) season nextAiringEpisode{episode airingAt}
+  const FULL = `${LITE} description(asHtml:false) season startDate{year month day} nextAiringEpisode{episode airingAt}
     studios(isMain:true){nodes{name}} trailer{id site}`;
 
 
@@ -459,7 +459,7 @@
       for (let depth = 0; depth < 8 && queue.length && seen.size < 20; depth++) {
         const q = queue.filter((x) => !seen.has(x)).slice(0, 10);
         if (!q.length) break;
-        const body = q.map((x, i) => `a${i}:Media(id:${x},type:ANIME){ id idMal synonyms format seasonYear startDate{year month day} title{romaji english} coverImage{large}
+        const body = q.map((x, i) => `a${i}:Media(id:${x},type:ANIME){ id idMal synonyms format status seasonYear startDate{year month day} title{romaji english} coverImage{large}
           relations{edges{relationType node{ id type }}}}`).join(" ");
         const d = await gql(`query{ ${body} }`, {}).catch(() => null);
         if (!d) break;

@@ -309,7 +309,16 @@
     const m = await Api.detail(id);
     if (!m) return fail("Аниме не найдено");
     const lib = Store.get(m.id) || {};
-    const total = m.episodes || (m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : 0);
+    // показываем только вышедшие серии: у анонсов серий нет, у идущих — до последней вышедшей
+    const unreleased = m.status === "NOT_YET_RELEASED";
+    const total = unreleased ? 0 : m.nextAiringEpisode ? Math.max(0, m.nextAiringEpisode.episode - 1) : m.episodes || 0;
+    const when = (() => {
+      if (m.nextAiringEpisode && m.nextAiringEpisode.airingAt) return new Date(m.nextAiringEpisode.airingAt * 1000).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+      const d = m.startDate || {};
+      if (d.year && d.month && d.day) return new Date(d.year, d.month - 1, d.day).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+      if (d.year && d.month) return new Date(d.year, d.month - 1, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+      return d.year ? String(d.year) : "";
+    })();
     const cur = lib.episode || 0;
     const studio = m.studios && m.studios.nodes[0] && m.studios.nodes[0].name;
     const relations = (m.relations.edges || []).filter((e) => e.node.type === "ANIME").slice(0, 8);
@@ -338,7 +347,7 @@
           </div>
           <div class="chips">${(m.genres || []).map((g) => `<a class="chip" href="#/search?genre=${encodeURIComponent(g)}">${esc(Api.genreRu(g))}</a>`).join("")}</div>
           <div class="actions">
-            <a class="btn primary" href="#/watch/${m.id}/${startEp}">${cur ? "Продолжить: серия " + cur + ((Pos.get(m.id) && String(Pos.get(m.id).ep) === String(cur) && Pos.get(m.id).t > 10) ? " · " + mmss(Pos.get(m.id).t) : "") : "Смотреть"}</a>
+            ${unreleased ? `<span class="btn soon" aria-disabled="true">Скоро${when ? ": выйдет " + esc(when) : ""}</span>` : `<a class="btn primary" href="#/watch/${m.id}/${startEp}">${cur ? "Продолжить: серия " + cur + ((Pos.get(m.id) && String(Pos.get(m.id).ep) === String(cur) && Pos.get(m.id).t > 10) ? " · " + mmss(Pos.get(m.id).t) : "") : "Смотреть"}</a>`}
             <button class="btn ${lib.liked ? "liked" : ""}" id="likeBtn">${lib.liked ? "♥ Нравится" : "♡ Нравится"}</button>
             <select class="select" id="statusSel" aria-label="Статус">
               <option value="">Не в списке</option>
@@ -362,7 +371,7 @@
         const box = $("#seasons");
         if (!box || !list.length) return;
         box.innerHTML = section("Сезоны", `<div class="seasons">${list.map((n, i) =>
-          `<a class="season ${n.id === m.id ? "cur" : ""}" href="#/anime/${n.id}"><b>Сезон ${i + 1}</b><span data-mal="${n.idMal || ""}">${esc(Api.title(n))}</span>${n.seasonYear || (n.startDate && n.startDate.year) ? `<small>${n.seasonYear || n.startDate.year}</small>` : ""}</a>`).join("")}</div>`);
+          `<a class="season ${n.id === m.id ? "cur" : ""}" href="#/anime/${n.id}"><b>Сезон ${i + 1}</b><span data-mal="${n.idMal || ""}">${esc(Api.title(n))}</span>${n.status === "NOT_YET_RELEASED" ? `<small>Скоро${n.seasonYear || (n.startDate && n.startDate.year) ? " · " + (n.seasonYear || n.startDate.year) : ""}</small>` : n.seasonYear || (n.startDate && n.startDate.year) ? `<small>${n.seasonYear || n.startDate.year}</small>` : ""}</a>`).join("")}</div>`);
       }).catch(() => {});
     }
 

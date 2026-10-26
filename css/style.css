@@ -290,7 +290,8 @@ h2 { font-size: 22px; font-weight: 600; }
 .season small { font-size: 11.5px; color: var(--muted); opacity: .7; }
 .season:hover { background: var(--s2); border-color: var(--line-2); transform: translateY(-2px); }
 .season.cur { background: var(--text); border-color: var(--text); }
-.season.cur b, .season.cur span, .season.cur small { color: #000; }
+.season.cur b, .season.cur span, .season.cur small { color: #000; opacity: 1; }
+.season.cur span, .season.cur small { color: #444; }
 
 .skel { height: 12px; border-radius: 6px; margin: 10px 0; background: linear-gradient(90deg, #111, #222, #111); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
 .skel.s { width: 60%; }
@@ -447,3 +448,6 @@ h2 { font-size: 22px; font-weight: 600; }
 .ai-tags .chip { cursor: default; padding: 3px 11px; font-size: 12.5px; }
 .ai-wait { display: flex; align-items: center; gap: 10px; margin-top: 26px; color: var(--muted); font-size: 14px; }
 .ai-wait i { width: 14px; height: 14px; border-radius: 50%; background: var(--moon); box-shadow: inset -5px 0 0 0 #000; animation: spin 1s linear infinite; }
+
+.btn.soon { cursor: default; color: var(--muted); border-style: dashed; background: transparent; }
+.btn.soon:hover { background: transparent; border-color: var(--line-2); }
