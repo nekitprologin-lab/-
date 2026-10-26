@@ -19,23 +19,17 @@ window.APP_CONFIG = {
   // Важно: в AniLibria есть не всё. Например, «Атаки титанов» там нет вообще, и карта тут не поможет.
   LIBRIA_MAP: {},
 
-  // Источник 2 (резерв): сторонний плеер Kodik в изолированной рамке без всплывающих окон.
+  // Источник 2 (резерв): сторонние плееры внутри нашего окна. Над плеером появятся кнопки по названиям ниже:
+  // если одна база заблокирована или просит токен, переключись на другую.
   // В адресах подставляются {shikimori_id} (= номер MyAnimeList), {anilist_id} и {title}.
-  // urls: основной адрес и зеркала на случай блокировок; над плеером появятся кнопки «Зеркало 1, 2, 3».
-  // Внимание: раньше Kodik у тебя не открывался ни с VPN, ни без. Если так и осталось, замени адреса
-  // на любой другой шаблон или оставь только вкладку «Трейлер и ссылки».
+  // sandbox: права рамки. Если плеер уходит в чёрный экран, поставь sandbox: "" (рамка без ограничений).
   RESERVE: {
     enabled: true,
-    urls: [
-      "https://kodik.info/find-player?shikimoriID={shikimori_id}",
-      "https://kodik.biz/find-player?shikimoriID={shikimori_id}",
-      "https://kodik.cc/find-player?shikimoriID={shikimori_id}",
+    sandbox: "allow-scripts allow-same-origin allow-forms allow-presentation",
+    sources: [
+      { name: "Kodik", url: "https://kodik.cc/find-player?shikimoriID={shikimori_id}" },
+      { name: "Aniboom", url: "https://aniboom.one/embed/{shikimori_id}" },
+      { name: "Зеркало", url: "https://kodik.biz/find-player?shikimoriID={shikimori_id}" },
     ],
-  },
-
-  // Кнопки страховки, когда видео не открылось ни в одном источнике.
-  LINKS: {
-    animego: "https://animego.org/search/all?q={q}",
-    shikimori: "https://shikimori.one/animes/{mal}",
   },
 };

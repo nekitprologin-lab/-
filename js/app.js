@@ -369,22 +369,15 @@
 
     const trailerId = m.trailer && String(m.trailer.site).toLowerCase() === "youtube" && /^[\w-]{6,20}$/.test(m.trailer.id) ? m.trailer.id : null;
     const fill = (tpl, vars) => String(tpl || "").replace(/\{(\w+)\}/g, (_, k) => encodeURIComponent(vars[k] == null ? "" : vars[k]));
-    const L = cfg.LINKS || {};
     const R = cfg.RESERVE || {};
-    // адреса резерва с подстановкой {shikimori_id}, {anilist_id}, {title} (старое {shikimori} тоже работает)
-    const reserveUrls = R.enabled && m.idMal
-      ? (R.urls || (R.url ? [R.url] : []))
-          .filter((u) => /^https:\/\//.test(u))
-          .map((u) => fill(u, { shikimori_id: m.idMal, shikimori: m.idMal, anilist_id: m.id, anilist: m.id, title: Api.title(m) }))
+    // базы резерва с подстановкой {shikimori_id}, {anilist_id}, {title}
+    const reserveSrc = R.enabled && m.idMal
+      ? (R.sources || [])
+          .filter((x) => x && /^https:\/\//.test(x.url))
+          .map((x) => ({ name: x.name || "Источник", url: fill(x.url, { shikimori_id: m.idMal, anilist_id: m.id, title: Api.title(m) }) }))
       : [];
-    const reserveUrl = reserveUrls[0] || null;
+    const reserveUrl = reserveSrc[0] ? reserveSrc[0].url : null;
     let mirror = 0;
-
-    // кнопки страховки: поиск на AnimeGO и страница на Shikimori
-    const linksHtml = () => `<div class="alt-links">
-      ${L.animego ? `<a class="btn" href="${esc(fill(L.animego, { q: Api.title(m) }))}" target="_blank" rel="noopener noreferrer">Смотреть на AnimeGO ↗</a>` : ""}
-      ${L.shikimori && m.idMal ? `<a class="btn" href="${esc(fill(L.shikimori, { mal: m.idMal }))}" target="_blank" rel="noopener noreferrer">Shikimori ↗</a>` : ""}
-    </div>`;
 
     // ступень 1: AniLibria, прямой поток m3u8 (умный поиск и ручная карта внутри Libria.find)
     let found = null;
@@ -411,7 +404,7 @@
       const tabs = [
         [1, "Источник 1 (AniLibria)", !found],
         [2, "Источник 2 (Резерв)", !reserveUrl],
-        [3, "Трейлер и ссылки", false],
+        [3, "Трейлер", false],
       ];
       srcBar.hidden = false;
       srcBar.innerHTML = tabs
@@ -430,27 +423,25 @@
         if (found) return startNative();
         $("#epTitle").textContent = "Источник 1";
         note(reason + (reserveUrl ? " Попробуй «Источник 2»." : ""));
-        epsBox.innerHTML = linksHtml();
-      } else if (n === 2) {
+              } else if (n === 2) {
         $("#epTitle").textContent = "Резервный плеер";
         if (!reserveUrl) {
           note("Резервный плеер не настроен.");
         } else {
-          // сторонняя страница: без allow-popups и allow-top-navigation, чтобы не открывала рекламу и не уводила со страницы
-          box.innerHTML = `<iframe src="${esc(reserveUrls[mirror])}" title="Резервный плеер" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation" allowfullscreen="true" allow="autoplay *; fullscreen *" referrerpolicy="no-referrer"></iframe>`;
+          // права рамки из конфига (по умолчанию scripts + same-origin + forms); пустая строка в sandbox убирает ограничения полностью
+          const sb = R.sandbox === "" ? "" : ` sandbox="${esc(R.sandbox || "allow-scripts allow-same-origin allow-forms allow-presentation")}"`;
+          box.innerHTML = `<iframe src="${esc(reserveSrc[mirror].url)}" title="Резервный плеер"${sb} allowfullscreen="true" allow="autoplay *; fullscreen *" referrerpolicy="no-referrer"></iframe>`;
         }
-        const mirrors = reserveUrls.length > 1
-          ? `<div class="alt-links">${reserveUrls.map((_, i) => `<button type="button" class="chip ${i === mirror ? "on" : ""}" data-mirror="${i}">Зеркало ${i + 1}</button>`).join("")}</div>`
+        epsBox.innerHTML = reserveSrc.length > 1
+          ? `<div class="alt-links" role="group" aria-label="База резервного плеера">${reserveSrc.map((x, i) => `<button type="button" class="chip ${i === mirror ? "on" : ""}" data-mirror="${i}">${esc(x.name)}</button>`).join("")}</div><p class="muted" style="max-width:70ch">Если плеер чёрный, пишет ошибку или просит токен, выбери другую базу.</p>`
           : "";
-        epsBox.innerHTML = `${mirrors}<p class="muted" style="max-width:70ch">Это сторонний плеер, он может не знать этот тайтл. Если рамка пустая или видео не идёт, попробуй другое зеркало или открой «Трейлер и ссылки».</p>${linksHtml()}`;
       } else {
-        $("#epTitle").textContent = "Трейлер и ссылки";
+        $("#epTitle").textContent = "Трейлер";
         if (trailerId) {
           box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${trailerId}" title="Трейлер" allow="fullscreen; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
         } else {
           note("Трейлера у этого аниме нет.");
         }
-        epsBox.innerHTML = `<p class="muted" style="max-width:70ch">${reason} Серии можно посмотреть на других сайтах.</p>${linksHtml()}`;
       }
     }
     epsBox.addEventListener("click", (ev) => {
