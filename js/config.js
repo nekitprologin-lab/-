@@ -19,10 +19,16 @@ window.APP_CONFIG = {
   // Важно: в AniLibria есть не всё. Например, «Атаки титанов» там нет вообще, и карта тут не поможет.
   LIBRIA_MAP: {},
 
-  // Источник 2 (резерв): плеер megaplay.buzz по номеру MyAnimeList, внутри нашего окна. Язык: английские
-  // субтитры или английская озвучка (русской озвучки у него нет). Серии выбираются кнопками под плеером.
+  // Источник 2: Kodik через твой шлюз на Cloudflare Workers (код воркера выдан в чате, инструкция в README).
+  // Впиши адрес воркера, например "https://kodik-gate.твоё-имя.workers.dev". Пока пусто, вкладка «Источник 2» отключена.
+  // Сайт делает запрос WORKER_URL?id=НОМЕР_MYANIMELIST, воркер отвечает JSON {"url": "https://…"}, ссылка идёт в рамку.
+  WORKER_URL: "",
+  WORKER_SANDBOX: "allow-scripts allow-same-origin allow-forms allow-presentation",
+
+  // Источник 3 (крайний случай): плеер megaplay.buzz по номеру MyAnimeList, внутри нашего окна. Язык: английские
+  // субтитры или английская озвучка (русской нет). Серии выбираются кнопками под плеером.
   // В адресе подставляются {mal} (номер MyAnimeList), {ep} (серия) и {lang} (sub или dub).
-  // sandbox: права рамки. Оставь пустым: megaplay не работает в рамке с sandbox и пишет «Sandboxed our player is not allowed».
+  // sandbox оставь пустым: megaplay не работает в рамке с sandbox и пишет «Sandboxed our player is not allowed».
   // Это значит, что сторонний плеер может открывать всплывающие окна, чего песочница не позволяла бы.
   RESERVE: {
     enabled: true,

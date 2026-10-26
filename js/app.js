@@ -370,6 +370,7 @@
     const trailerId = m.trailer && String(m.trailer.site).toLowerCase() === "youtube" && /^[\w-]{6,20}$/.test(m.trailer.id) ? m.trailer.id : null;
     const R = cfg.RESERVE || {};
     const reserveOn = !!(R.enabled && m.idMal);
+    const gateOn = !!(/^https:\/\//.test(cfg.WORKER_URL || "") && m.idMal);
 
     // ступень 1: AniLibria, прямой поток m3u8 (умный поиск и ручная карта внутри Libria.find)
     let found = null;
@@ -395,8 +396,9 @@
     function drawTabs() {
       const tabs = [
         [1, "Источник 1 (AniLibria)", !found],
-        [2, "Источник 2 (Резерв)", !reserveOn],
-        [3, "Трейлер", false],
+        [2, "Источник 2 (Kodik)", !gateOn],
+        [3, "Источник 3 (EN)", !reserveOn],
+        [4, "Трейлер", false],
       ];
       srcBar.hidden = false;
       srcBar.innerHTML = tabs
@@ -409,7 +411,7 @@
     let resEp = Math.max(1, Math.min(total, parseInt(epParam, 10) || 1));
     let resLang = "sub";
     function drawReserve() {
-      $("#epTitle").textContent = "Резервный плеер · серия " + resEp;
+      $("#epTitle").textContent = "Источник 3 · серия " + resEp;
       const src = String(R.url).replace(/\{(\w+)\}/g, (_, k) => ({ mal: m.idMal, ep: resEp, lang: resLang }[k] ?? ""));
       // megaplay отказывает рамкам с sandbox («Sandboxed our player is not allowed») и без реферера (ошибка 410),
       // поэтому по умолчанию рамка без sandbox и с обычным referrer. Ограничения можно вернуть в config.js (RESERVE.sandbox).
@@ -423,8 +425,42 @@
         <p class="muted" style="max-width:70ch;margin-top:12px">Резервный плеер без русской озвучки. Если серия не открывается, попробуй другой язык.</p>`;
       history.replaceState(null, "", "#/watch/" + m.id + "/" + resEp);
     }
+    // ---- Источник 2: Kodik через шлюз на Cloudflare Workers ----
+    const gateCache = (window.__gateCache = window.__gateCache || new Map());
+    async function fetchGate() {
+      if (gateCache.has(m.idMal)) return gateCache.get(m.idMal);
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 12000);
+      try {
+        const base = cfg.WORKER_URL + (cfg.WORKER_URL.includes("?") ? "&" : "?") + "id=" + encodeURIComponent(m.idMal);
+        const res = await fetch(base, { signal: ctrl.signal });
+        if (!res.ok) return { err: res.status === 404 ? "Kodik не знает этого аниме" : "шлюз ответил ошибкой " + res.status };
+        const text = (await res.text()).trim();
+        let url = text;
+        try { const j = JSON.parse(text); url = j && j.url; } catch (e) {}
+        if (!url) return { err: "Kodik не знает этого аниме" };
+        if (!/^https:\/\//.test(url)) return { err: "шлюз вернул ссылку в неожиданном виде" };
+        gateCache.set(m.idMal, { url });
+        return { url };
+      } catch (e) {
+        return { err: e.name === "AbortError" ? "шлюз не ответил за 12 с" : "шлюз недоступен" };
+      } finally {
+        clearTimeout(t);
+      }
+    }
+    function drawGate() {
+      $("#epTitle").textContent = "Источник 2 · Kodik";
+      note("Ищу плеер…");
+      fetchGate().then((r) => {
+        if (tab !== 2 || !box.isConnected) return; // пока ждали, вкладку или страницу сменили
+        if (!r.url) return note(`Плеер временно недоступен<div class="muted" style="font-size:12px;margin-top:8px">${esc(r.err)}</div>`);
+        const sb = cfg.WORKER_SANDBOX ? ` sandbox="${esc(cfg.WORKER_SANDBOX)}"` : "";
+        box.innerHTML = `<iframe src="${esc(r.url)}" title="Kodik"${sb} allowfullscreen="true" allow="autoplay *; fullscreen *"></iframe>`;
+      });
+    }
+
     epsBox.addEventListener("click", (ev) => {
-      if (tab !== 2) return;
+      if (tab !== 3) return;
       const l = ev.target.closest("[data-lang]");
       const e = ev.target.closest("[data-rep]");
       if (l) { resLang = l.dataset.lang; drawReserve(); }
@@ -441,9 +477,12 @@
       if (n === 1) {
         if (found) return startNative();
         $("#epTitle").textContent = "Источник 1";
-        note(reason + (reserveOn ? " Попробуй «Источник 2»." : ""));
-              } else if (n === 2) {
-        if (!reserveOn) { $("#epTitle").textContent = "Резервный плеер"; return note("Резервный плеер не настроен."); }
+        note(reason + (gateOn || reserveOn ? " Попробуй другой источник." : ""));
+      } else if (n === 2) {
+        if (!gateOn) { $("#epTitle").textContent = "Источник 2"; return note("Шлюз Kodik не настроен (WORKER_URL в config.js)."); }
+        drawGate();
+      } else if (n === 3) {
+        if (!reserveOn) { $("#epTitle").textContent = "Источник 3"; return note("Резервный плеер не настроен."); }
         drawReserve();
       } else {
         $("#epTitle").textContent = "Трейлер";
@@ -581,7 +620,7 @@
     select(idx, { autoplay: true });
     }
 
-    setTab(found ? 1 : reserveOn ? 2 : 3);
+    setTab(found ? 1 : gateOn ? 2 : reserveOn ? 3 : 4);
   }
 
   function pageLibrary(params) {
