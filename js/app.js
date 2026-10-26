@@ -1393,7 +1393,17 @@
 
   // шапка становится стеклянной, когда страница прокручена
   const navEl = $("#nav");
-  const onScroll = () => navEl.classList.toggle("scrolled", window.scrollY > 24);
+  let lastY = 0;
+  const onScroll = () => {
+    const y = window.scrollY;
+    navEl.classList.toggle("scrolled", y > 24);
+    // на телефоне шапка уходит при прокрутке вниз и возвращается при прокрутке вверх (но не пока открыт поиск)
+    const mobile = document.documentElement.getAttribute("data-device") === "mobile";
+    const typing = document.activeElement && navEl.contains(document.activeElement) && document.activeElement.tagName === "INPUT";
+    if (mobile && !typing && y > 120 && y > lastY + 6) navEl.classList.add("hide");
+    else if (y < lastY - 6 || y <= 120 || !mobile || typing) navEl.classList.remove("hide");
+    if (Math.abs(y - lastY) > 6) lastY = y;
+  };
   window.addEventListener("scroll", onScroll, { passive: true });
   onScroll();
 

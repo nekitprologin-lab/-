@@ -355,23 +355,6 @@ h2 { font-size: 22px; font-weight: 600; }
 .resume { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 11px 16px; margin-bottom: 12px; border-radius: 14px; background: var(--s1); border: 1px solid var(--line-2); animation: heroin .5s var(--ease); }
 .resume span::before { content: "▶  "; color: var(--moon); font-size: 12px; }
 
-@media (max-width: 720px) {
-  :root { --nav-h: 60px; }
-  .nav { height: auto; min-height: var(--nav-h); flex-wrap: wrap; gap: 8px 12px; padding-top: 8px; padding-bottom: 8px; }
-  .nav-search { order: 3; flex-basis: 100%; max-width: none; }
-  .hero { min-height: 70vh; margin-top: -100px; }
-  .hero-slide { padding-top: 140px; }
-  .detail-banner { height: 300px; margin-top: -100px; }
-  .detail-body { grid-template-columns: 1fr; margin-top: -110px; }
-  .detail-body .cover { width: 170px; }
-  .row { grid-auto-columns: 144px; }
-  .row.ranked .card { --pad: 34px; width: calc(144px + var(--pad)); }
-  .row.ranked .card:nth-child(n+10) { --pad: 78px; }
-  .row.ranked .poster { width: 144px; }
-  .row.ranked .card::before { font-size: 92px; top: 112px; }
-  .grid { grid-template-columns: repeat(auto-fill, minmax(144px, 1fr)); gap: 22px 14px; }
-  .srcbar { border-radius: 20px; }
-}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
@@ -478,3 +461,106 @@ h2 { font-size: 22px; font-weight: 600; }
 
 .btn.soon { cursor: default; color: var(--muted); border-style: dashed; background: transparent; }
 .btn.soon:hover { background: transparent; border-color: var(--line-2); }
+
+
+/* ---------- сенсорные экраны: наведение мыши не «залипает» после касания ---------- */
+@media (hover: none) {
+  .card:hover { transform: none; }
+  .card:hover img { transform: none; }
+  .card:hover .poster::after, .card:hover .poster::before { opacity: 0; }
+  .ep:hover, .season:hover, .lib-cont:hover, .btn.primary:hover { transform: none; }
+  .row.ranked .card:hover::before { -webkit-text-stroke-color: inherit; }
+}
+
+/* ---------- телефон: отдельный интерфейс (html[data-device="mobile"] выставляется скриптом в index.html) ---------- */
+html[data-device="mobile"] { -webkit-text-size-adjust: 100%; }
+html[data-device="mobile"] body { -webkit-tap-highlight-color: transparent; padding-bottom: env(safe-area-inset-bottom); }
+html[data-device="mobile"] input, html[data-device="mobile"] select, html[data-device="mobile"] textarea { font-size: 16px; } /* iOS не приближает экран при вводе */
+html[data-device="mobile"] { --nav-h: 56px; }
+
+/* шапка: сплошная, не лежит поверх баннера; прячется при прокрутке вниз и возвращается при прокрутке вверх */
+html[data-device="mobile"] .nav {
+  height: auto; flex-wrap: wrap; gap: 8px 8px; padding: calc(8px + env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
+  background: #000; box-shadow: 0 1px 0 var(--line); transition: transform .3s var(--ease);
+}
+html[data-device="mobile"] .nav::before { display: none; }
+html[data-device="mobile"] .nav.scrolled { background: rgba(0, 0, 0, .92); }
+html[data-device="mobile"] .nav.hide { transform: translateY(-100%); }
+html[data-device="mobile"] .logo { font-size: 19px; text-shadow: none; }
+html[data-device="mobile"] .nav-links { gap: 0; }
+html[data-device="mobile"] .nav-links a, html[data-device="mobile"] .nav-links button { padding: 10px 12px; min-height: 40px; display: inline-flex; align-items: center; text-shadow: none; }
+html[data-device="mobile"] .nav-search { order: 3; flex-basis: 100%; max-width: none; }
+html[data-device="mobile"] .nav-search input { padding: 11px 18px; background: var(--s1); }
+html[data-device="mobile"] .suggest { left: 0; right: 0; width: auto; max-height: 60vh; overflow: auto; }
+
+html[data-device="mobile"] .wrap { padding: 18px 14px 56px; }
+html[data-device="mobile"] .section { margin-top: 32px; }
+html[data-device="mobile"] h2 { font-size: 20px; }
+
+/* главная: герой начинается под шапкой, текст не вылезает */
+html[data-device="mobile"] .hero { min-height: min(560px, 78svh); margin-top: 0; touch-action: pan-y; }
+html[data-device="mobile"] .hero-slide { padding: 20px 16px 56px; }
+html[data-device="mobile"] .hero h1 { font-size: clamp(28px, 8.6vw, 38px); }
+html[data-device="mobile"] .hero p { font-size: 14.5px; margin: 12px 0 18px; min-height: 0; -webkit-line-clamp: 3; }
+html[data-device="mobile"] .hero .meta { margin-top: 12px; flex-wrap: wrap; }
+html[data-device="mobile"] .hero-tag { margin-bottom: 10px; font-size: 11.5px; }
+html[data-device="mobile"] .hero-slide::before {
+  background: linear-gradient(to top, #000 4%, rgba(0, 0, 0, .78) 42%, rgba(0, 0, 0, .25) 100%);
+}
+html[data-device="mobile"] .hero .btn { min-height: 46px; padding: 0 28px; }
+html[data-device="mobile"] .hero-dots { left: 16px; bottom: 22px; }
+html[data-device="mobile"] .hd { width: 30px; }
+
+/* ряды: свайп пальцем, края на всю ширину экрана, без стрелок */
+html[data-device="mobile"] .row { grid-auto-columns: 130px; gap: 12px; margin: 0 -14px; padding: 4px 14px 14px; scroll-padding: 0 14px; -webkit-overflow-scrolling: touch; cursor: auto; }
+html[data-device="mobile"] .row-btn, html[data-device="mobile"] .row-wrap::after { display: none; }
+html[data-device="mobile"] .row.ranked .card { --pad: 30px; width: calc(130px + var(--pad)); }
+html[data-device="mobile"] .row.ranked .card:nth-child(n+10) { --pad: 70px; }
+html[data-device="mobile"] .row.ranked .poster { width: 130px; }
+html[data-device="mobile"] .row.ranked .card::before { font-size: 82px; top: 100px; }
+html[data-device="mobile"] .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 12px; }
+html[data-device="mobile"] .card .name { font-size: 14px; }
+
+/* страница аниме */
+html[data-device="mobile"] .detail-banner { height: 220px; margin-top: 0; }
+html[data-device="mobile"] .detail-body { grid-template-columns: 1fr; gap: 18px; margin-top: -90px; }
+html[data-device="mobile"] .detail-body .cover { width: 140px; }
+html[data-device="mobile"] .detail-body h1 { font-size: clamp(26px, 8vw, 34px); }
+html[data-device="mobile"] .actions { gap: 8px; }
+html[data-device="mobile"] .actions .btn.primary, html[data-device="mobile"] .actions .btn.soon { flex: 1 1 100%; justify-content: center; text-align: center; min-height: 48px; }
+html[data-device="mobile"] .actions .btn:not(.primary):not(.soon), html[data-device="mobile"] .actions .select { flex: 1 1 calc(50% - 4px); min-height: 46px; }
+html[data-device="mobile"] .seasons { grid-auto-flow: column; grid-auto-columns: 78%; grid-template-columns: none; overflow-x: auto; margin: 0 -14px; padding: 2px 14px 10px; scroll-snap-type: x proximity; scrollbar-width: none; }
+html[data-device="mobile"] .seasons::-webkit-scrollbar { display: none; }
+html[data-device="mobile"] .seasons .season { scroll-snap-align: start; }
+
+/* просмотр: плеер на всю ширину, крупные кнопки серий */
+html[data-device="mobile"] .watch { margin: 0 -14px; }
+html[data-device="mobile"] .watch > *:not(.player) { margin-left: 14px; margin-right: 14px; }
+html[data-device="mobile"] .player { border-radius: 0; box-shadow: none; }
+html[data-device="mobile"] .watch-bar { margin: 14px 14px; }
+html[data-device="mobile"] .watch-bar .grow { min-width: 100%; }
+html[data-device="mobile"] .srcbar { flex-wrap: nowrap; overflow-x: auto; width: auto; max-width: calc(100% - 28px); scrollbar-width: none; }
+html[data-device="mobile"] .srcbar::-webkit-scrollbar { display: none; }
+html[data-device="mobile"] .srcbar .chip { white-space: nowrap; flex: none; padding: 9px 14px; }
+html[data-device="mobile"] .eps { grid-template-columns: repeat(5, 1fr); gap: 8px; }
+html[data-device="mobile"] .ep { padding: 13px 0; }
+
+/* каталог и библиотека */
+html[data-device="mobile"] .filters { padding: 8px; gap: 8px; }
+html[data-device="mobile"] .filters .f-search { flex-basis: 100%; }
+html[data-device="mobile"] .filters .select, html[data-device="mobile"] .filters input[type=number] { flex: 1 1 calc(50% - 4px); width: auto; min-height: 44px; }
+html[data-device="mobile"] .genre-row { margin: 0 -14px; padding: 2px 14px 10px; }
+html[data-device="mobile"] .chip { min-height: 38px; display: inline-flex; align-items: center; }
+html[data-device="mobile"] .lib-tabs { width: auto; margin: 18px -14px 18px; border-radius: 0; border-left: 0; border-right: 0; padding: 4px 10px; }
+html[data-device="mobile"] .lib-tabs a { padding: 10px 14px; }
+
+/* вход */
+html[data-device="mobile"] .auth { margin: 18px auto 0; padding: 22px 18px; border-radius: 20px; }
+html[data-device="mobile"] .field input { padding: 14px 15px; }
+html[data-device="mobile"] .btn { min-height: 44px; }
+
+/* окна: выезжают снизу как на телефоне, меню и уведомления учитывают нижнюю «чёлку» */
+html[data-device="mobile"] .modal { align-items: flex-end; padding: 0; }
+html[data-device="mobile"] .modal-box { max-width: none; border-radius: 22px 22px 0 0; max-height: 88svh; overflow: auto; padding: 20px 18px calc(20px + env(safe-area-inset-bottom)); }
+html[data-device="mobile"] .toast { bottom: calc(20px + env(safe-area-inset-bottom)); max-width: calc(100vw - 32px); text-align: center; }
+html[data-device="mobile"] .usermenu .menu { right: 0; }
