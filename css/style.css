@@ -147,6 +147,8 @@ h2 { font-size: 20px; font-weight: 500; }
 .srcbar .chip.off { opacity: .55; }
 .tip { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--muted); font-size: 14px; line-height: 1.45; }
 .tip p { margin: 0; flex: 1; max-width: 70ch; }
+.tip a { color: var(--moon); text-decoration: underline; text-underline-offset: 2px; }
+.tip a:hover { color: #fff0b8; }
 .tip-ico { color: var(--moon); font-size: 18px; line-height: 1.2; }
 .tip-x { flex: none; width: 28px; height: 28px; border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: 20px; line-height: 1; }
 .tip-x:hover { background: var(--panel-2); color: var(--text); }

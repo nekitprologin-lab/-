@@ -357,7 +357,7 @@
       <div class="srcbar" id="srcBar" role="tablist" aria-label="Источник видео" hidden></div>
       <div class="tip" id="adTip" role="note" hidden>
         <span class="tip-ico" aria-hidden="true">ⓘ</span>
-        <p>В плеере Kodik есть встроенная видеореклама. Чтобы смотреть без неё, рекомендуем использовать uBlock Origin или браузер со встроенным блоком (Brave / AdGuard).</p>
+        <p>В плеере Kodik есть встроенная видеореклама. Чтобы смотреть без неё, рекомендуем использовать <a href="https://ublockorigin.com/" target="_blank" rel="noopener noreferrer">uBlock Origin</a> или браузер со встроенным блоком (<a href="https://brave.com/" target="_blank" rel="noopener noreferrer">Brave</a> / <a href="https://adguard.com/" target="_blank" rel="noopener noreferrer">AdGuard</a>).</p>
         <button type="button" class="tip-x" id="adTipX" aria-label="Закрыть подсказку">×</button>
       </div>
       <div class="player" id="player"><div class="player-empty"><div>Ищу «${esc(Api.title(m))}» в каталоге AniLibria…</div></div></div>
