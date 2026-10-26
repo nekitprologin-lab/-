@@ -307,14 +307,14 @@
   }
 
   // ---------- Kinobox ----------
-  const KINOBOX_JS = "https://kinobox.tv/kinobox.min.js";
+  const KINOBOX_JS = "https://on.kinohub.vip/kinobox.min.js"; // по умолчанию; у источника можно задать свой script
 
   function kinoboxError(box) {
-    box.innerHTML = `<div class="player-empty"><div>Kinobox не загрузился. Либо <b>kinobox.tv</b> недоступен из твоей сети, либо сервис изменил свой код.<br>Попробуй источник «Kinobox (напрямую)» или открой <a href="#/diag" style="text-decoration:underline">проверку доступности</a>.</div></div>`;
+    box.innerHTML = `<div class="player-empty"><div>Kinobox не загрузился. Либо адрес скрипта недоступен из твоей сети, либо сервис изменил свой код.<br>Попробуй источник «Kinobox (напрямую)» или открой <a href="#/diag" style="text-decoration:underline">проверку доступности</a>.</div></div>`;
   }
 
   // Режим «напрямую»: скрипт Kinobox подключается в саму страницу (так, как описано в его инструкции).
-  function mountKinoboxDirect(box, id) {
+  function mountKinoboxDirect(box, id, scriptUrl = KINOBOX_JS) {
     box.innerHTML = `<div class="kinobox_div"></div>`;
     const el = $(".kinobox_div", box);
     const opts = { search: { shikimori: String(id) } };
@@ -338,7 +338,7 @@
     if (s && s.dataset.state === "error") return kinoboxError(box);
     if (!s) {
       s = document.createElement("script");
-      s.src = KINOBOX_JS;
+      s.src = scriptUrl;
       s.async = true;
       s.dataset.kinobox = "1";
       s.dataset.state = "loading";
@@ -352,7 +352,7 @@
 
   // Режим «изолированно»: виджет живёт в рамке без доступа к странице, твоим аккаунтам и данным сайта.
   // Внутри рамки видны сообщения, если скрипт не загрузился, упал или ничего не показал.
-  function mountKinoboxIsolated(box, id) {
+  function mountKinoboxIsolated(box, id, scriptUrl = KINOBOX_JS) {
     const doc = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>html,body{margin:0;height:100%;background:#000;color:#aaa;font:14px sans-serif}.kinobox_div{width:100%;height:100%}
 #kb_log{position:absolute;left:8px;right:8px;bottom:8px;padding:10px 12px;background:#1b1a3a;color:#f3e3a1;border-radius:8px;line-height:1.4}</style>
@@ -361,7 +361,7 @@ function kbLog(t){var d=document.getElementById("kb_log");if(!d){d=document.crea
 window.onerror=function(m){kbLog("Ошибка в скрипте Kinobox: "+m);};
 <\/script></head>
 <body><div class="kinobox_div"></div>
-<script src="${KINOBOX_JS}" onerror="kbLog('Скрипт Kinobox не загрузился: kinobox.tv недоступен из твоей сети.')"><\/script>
+<script src="${scriptUrl}" onerror="kbLog('Скрипт Kinobox не загрузился: адрес скрипта недоступен из твоей сети или больше не существует.')"><\/script>
 <script>
 (function () {
   var o = { search: { shikimori: ${JSON.stringify(String(id))} } };
@@ -450,7 +450,7 @@ window.onerror=function(m){kbLog("Ошибка в скрипте Kinobox: "+m);}
       }
       if (p.type === "kinobox") {
         tab.style.display = "none"; // у виджета нет одной ссылки, которую можно открыть отдельно
-        return p.mode === "direct" ? mountKinoboxDirect(box, m.idMal) : mountKinoboxIsolated(box, m.idMal);
+        return p.mode === "direct" ? mountKinoboxDirect(box, m.idMal, p.script || KINOBOX_JS) : mountKinoboxIsolated(box, m.idMal, p.script || KINOBOX_JS);
       }
       tab.style.display = "";
       box.innerHTML = `<iframe src="${esc(src(p))}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="origin" title="Серия ${ep}"></iframe>`;
@@ -558,7 +558,7 @@ window.onerror=function(m){kbLog("Ошибка в скрипте Kinobox: "+m);}
       ["Каталог AniList", "https://graphql.anilist.co/"],
       ["Постеры AniList", "https://s4.anilist.co/"],
       ["Русские названия (Shikimori)", "https://shikimori.one/"],
-      ["Плеер Kinobox", "https://kinobox.tv/"],
+      ["Плеер Kinobox (on.kinohub.vip)", "https://on.kinohub.vip/"],
       ["Плеер Kodik (один из источников Kinobox)", "https://kodik.info/"],
       ["Шрифты Google", "https://fonts.googleapis.com/"],
       ["Библиотека входа (jsDelivr)", "https://cdn.jsdelivr.net/"],

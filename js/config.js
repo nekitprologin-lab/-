@@ -9,14 +9,16 @@ window.APP_CONFIG = {
   SUPABASE_ANON_KEY: "",
 
   // Источники видео. Первый в списке открывается по умолчанию, остальные выбираются переключателем «Источник».
-  //   type "kinobox" — виджет Kinobox (kinobox.tv), ищет плееры по номеру Shikimori.
+  //   type "kinobox" — виджет Kinobox, ищет плееры по номеру Shikimori.
+  //     script — адрес скрипта виджета. Старый kinobox.tv больше не отдаёт скрипт: сервис переехал,
+  //              его старые домены пересылают на on.kinohub.vip. Если и этот адрес сменится, поменяй его здесь.
   //     mode "isolated" — виджет работает в отдельной защищённой рамке и не видит данных сайта (безопаснее).
-  //     mode "direct"   — виджет подключается прямо в страницу (на случай, если в рамке не заработал).
+  //     mode "direct"   — виджет подключается прямо в страницу и получает к ней доступ (на случай, если в рамке не заработал).
   //   url — обычный плеер по ссылке-шаблону. В ссылке можно использовать:
   //     {mal_id}  — номер аниме (он же id на Shikimori)
   //     {episode} — номер серии
   PLAYERS: [
-    { name: "Kinobox", type: "kinobox", mode: "isolated" },
-    { name: "Kinobox (напрямую)", type: "kinobox", mode: "direct" },
+    { name: "Kinobox", type: "kinobox", mode: "isolated", script: "https://on.kinohub.vip/kinobox.min.js" },
+    { name: "Kinobox (напрямую)", type: "kinobox", mode: "direct", script: "https://on.kinohub.vip/kinobox.min.js" },
   ],
 };
