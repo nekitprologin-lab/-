@@ -70,48 +70,75 @@
     (app.innerHTML = `<div class="wrap"><div class="empty">Не получилось загрузить данные: ${esc(e.message || e)}.<br>Проверь интернет и <a href="javascript:location.reload()">обнови страницу</a>.</div></div>`);
 
   // ---------- рекомендации ----------
-  // Вес жанра: лайк +3, просмотрено +2, смотрю +1, брошено -2. Берём топ-жанры, ищем популярное в них,
-  // добавляем «похожее» от AniList для двух последних лайков и ранжируем по совпадению жанров и оценке.
+  // Вкус считается по жанрам с весами (лайк +3, просмотрено +2, смотрю +1, брошено −2; свежее важнее старого).
+  // Кандидаты: популярное в сочетаниях любимых жанров + «похожее» от AniList к пяти самым весомым тайтлам.
+  // Исключаем уже виденное, в том числе другие сезоны той же франшизы; разные жанры чередуем, слабые оценки отсеиваем.
+  // Результат запоминается на 30 минут и пересчитывается, когда библиотека изменилась.
   async function recommend() {
     const lib = Store.all();
-    const weights = {};
-    lib.forEach((r) => {
-      const w = (r.liked ? 3 : 0) + (r.status === "completed" ? 2 : 0) + (r.status === "watching" ? 1 : 0) - (r.status === "dropped" ? 2 : 0);
-      if (w) (r.genres || []).forEach((g) => (weights[g] = (weights[g] || 0) + w));
-    });
-    const top = Object.entries(weights).filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    const tw = Smart.taste(lib);
+    const top = Object.entries(tw.weights).filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).map((x) => x[0]).slice(0, 4);
     if (!top.length) return [];
 
-    const seen = new Set(lib.map((r) => r.anime_id));
-    const recentLikes = lib.filter((r) => r.liked).sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1)).slice(0, 2);
+    const fp = lib.map((r) => [r.anime_id, r.status || "", r.liked ? 1 : 0].join(":")).sort().join("|");
+    const ckey = "tsukimi:rec:" + ((Store.user && (Store.user.id || Store.user.name)) || "local");
+    try {
+      const c = JSON.parse(localStorage.getItem(ckey) || "null");
+      if (c && c.fp === fp && Date.now() - c.t < 30 * 60000 && c.items && c.items.length) return c.items;
+    } catch (e) {}
 
-    const [byGenre, similar] = await Promise.all([
-      Promise.all(top.map(([g]) => Api.byGenre(g))),
-      Promise.all(recentLikes.map((r) => Api.detail(r.anime_id).catch(() => null))),
+    const anchors = lib
+      .filter((r) => r.liked || r.status === "completed")
+      .map((r) => ({ r, w: (r.liked ? 3 : 0) + (r.status === "completed" ? 2 : 0) }))
+      .sort((a, b) => b.w - a.w || (b.r.updated_at > a.r.updated_at ? 1 : -1))
+      .slice(0, 5);
+
+    const combos = [];
+    if (top[1]) combos.push([top[0], top[1]]);
+    if (top[2]) combos.push([top[0], top[2]]);
+    if (top[1] && top[2]) combos.push([top[1], top[2]]);
+    combos.push([top[0]]);
+    if (top[3]) combos.push([top[3]]);
+
+    const [byGenre, recs] = await Promise.all([
+      Promise.all(combos.map((g) => Api.pick({ g, sc: 65 }))),
+      Promise.all(anchors.map((a) => Api.recsById(a.r.anime_id))),
     ]);
 
     const pool = new Map();
-    byGenre.flat().forEach((m) => pool.set(m.id, { m, bonus: 0 }));
-    similar.forEach((d) => {
-      if (!d) return;
-      d.recommendations.nodes.forEach((n) => {
-        const m = n.mediaRecommendation;
-        if (!m) return;
-        const e = pool.get(m.id) || { m, bonus: 0 };
-        e.bonus += 5;
-        pool.set(m.id, e);
-      });
-    });
+    const add = (m, bonus) => {
+      if (!m) return;
+      const e = pool.get(m.id) || { m, bonus: 0 };
+      e.bonus += bonus;
+      pool.set(m.id, e);
+    };
+    byGenre.flat().forEach((m) => add(m, 0));
+    recs.forEach((list, i) => list.forEach((m) => add(m, 4 + (anchors[i].w >= 5 ? 1.5 : 0))));
 
-    return [...pool.values()]
-      .filter((e) => !seen.has(e.m.id))
-      .map((e) => ({
-        m: e.m,
-        s: (e.m.genres || []).reduce((a, g) => a + (weights[g] || 0), 0) + e.bonus + (e.m.averageScore || 0) / 20,
-      }))
-      .sort((a, b) => b.s - a.s)
-      .slice(0, 18)
-      .map((e) => e.m);
+    const OK = ["TV", "TV_SHORT", "MOVIE", "ONA", "OVA"];
+    const ranked = [...pool.values()]
+      .filter((e) => !tw.seen.has(e.m.id) && OK.includes(e.m.format) && e.m.status !== "NOT_YET_RELEASED" && (e.m.averageScore || 70) >= 62 && !tw.bases.has(Smart.baseTitle(Api.title(e.m))))
+      .map((e) => ({ m: e.m, s: Smart.tasteScore(e.m, tw) + e.bonus }))
+      .sort((a, b) => b.s - a.s);
+
+    // разнообразие: одна франшиза — один раз, а на каждый уже выбранный тайтл с тем же главным жанром — небольшой штраф
+    const out = [], bases = new Set(), mainCount = {};
+    while (out.length < 18 && ranked.length) {
+      let bi = -1, bs = -1e9;
+      ranked.forEach((c, i) => {
+        const adj = c.s - 0.9 * (mainCount[(c.m.genres || [])[0]] || 0);
+        if (adj > bs) { bs = adj; bi = i; }
+      });
+      const [c] = ranked.splice(bi, 1);
+      const b = Smart.baseTitle(Api.title(c.m));
+      if (bases.has(b)) continue;
+      bases.add(b);
+      const g0 = (c.m.genres || [])[0];
+      mainCount[g0] = (mainCount[g0] || 0) + 1;
+      out.push(c.m);
+    }
+    try { localStorage.setItem(ckey, JSON.stringify({ fp, t: Date.now(), items: out })); } catch (e) {}
+    return out;
   }
 
   // ---------- страницы ----------
@@ -253,7 +280,7 @@
     const input = $("input[name=q]");
     if (!state.q) input.focus();
 
-    let seq = 0, timer = null, aiTimer = null, shown = "", shownIds = new Set(), aiSeq = 0;
+    let seq = 0, timer = null, aiTimer = null, shown = "", shownIds = new Set(), aiSeq = 0, smartMode = false, aiEmpty = false;
     const aiBox = $("#aiBox");
     // второй слой: ИИ разбирает запрос (опечатки, смысл, жанры) и подбирает из всего каталога AniList
     async function runAI(q, mySeq) {
@@ -262,10 +289,18 @@
       const r = await Api.aiSearch(q).catch(() => null);
       if (my !== aiSeq || mySeq !== seq) return;
       const items = r ? r.items.filter((m) => !shownIds.has(m.id)) : [];
-      if (!items.length) { aiBox.innerHTML = ""; return; }
+      aiEmpty = !items.length;
+      if (!items.length) {
+        aiBox.innerHTML = "";
+        if (!results.querySelector(".card:not(.sk)")) results.innerHTML = `<div class="empty">Ничего не нашлось. Попробуй часть названия, жанр или опиши иначе.</div>`;
+        return;
+      }
       const pl = r.plan;
-      const chips = [...(pl.genres || []).map(Api.genreRu), ...(pl.tags || []), pl.year ? String(pl.year) : "", pl.similar_to ? "похоже на " + pl.similar_to : ""].filter(Boolean);
-      aiBox.innerHTML = `<section class="ai-block"><div class="ai-head"><h2>Возможно, ты искал</h2>${chips.length ? `<div class="ai-tags">${chips.map((c) => `<span class="chip">${esc(c)}</span>`).join("")}</div>` : ""}</div>
+      const chips = [...(pl.genres || []).map(Api.genreRu), ...(pl.tags || []), pl.year ? String(pl.year) : "", pl.format === "MOVIE" ? "фильм" : "", pl.similar_to ? "похоже на " + pl.similar_to : ""].filter(Boolean);
+      // если обычный поиск по названию ничего не дал, подборка и есть главный результат
+      const lead = !results.querySelector(".card:not(.sk)");
+      if (lead) results.innerHTML = "";
+      aiBox.innerHTML = `<section class="ai-block"><div class="ai-head"><h2>${lead || pl.src === "rules" || pl.src === "similar" ? "Подобрано по запросу" : "Возможно, ты искал"}</h2>${chips.length ? `<div class="ai-tags">${chips.map((c) => `<span class="chip">${esc(c)}</span>`).join("")}</div>` : ""}</div>
         <div class="grid">${items.map((m, i) => stag(card(m), i)).join("")}</div></section>`;
     }
     const words = (q) => q.split(/\s+/).filter(Boolean).length;
@@ -277,7 +312,7 @@
       shown = key;
       shownIds = new Set(items.map((m) => m.id));
       results.classList.remove("busy");
-      if (!items.length) { results.innerHTML = `<div class="empty">Ничего не нашлось. Попробуй часть названия или сними фильтры.</div>`; return; }
+      if (!items.length) { results.innerHTML = smartMode && !aiEmpty ? "" : `<div class="empty">Ничего не нашлось. Попробуй часть названия или сними фильтры.</div>`; return; }
       results.innerHTML = `<div class="grid">${items.map((m, i) => stag(card(m), i)).join("")}</div>`;
       if (hasNext) {
         results.insertAdjacentHTML("beforeend", `<button class="btn more">Показать ещё</button>`);
@@ -297,13 +332,15 @@
       const my = ++seq;
       let aiStarted = false;
       if (!append) {
-        aiSeq++; aiBox.innerHTML = "";
+        aiSeq++; aiEmpty = false; aiBox.innerHTML = "";
         // длинный запрос, похожий на описание: ИИ стартует сразу, параллельно с обычным поиском
         clearTimeout(aiTimer);
-        if (state.q.length >= 3 && (words(state.q) >= 3 || /[А-Яа-яЁё]/.test(state.q)) && !state.genre && !state.year && !state.sort) {
+        const pr = window.Smart ? Smart.parse(state.q) : {};
+        smartMode = !!(pr.descriptive || pr.similar);
+        if (state.q.length >= 3 && (smartMode || words(state.q) >= 3 || /[А-Яа-яЁё]/.test(state.q)) && !state.genre && !state.year && !state.sort) {
           aiStarted = true;
-          // небольшая пауза, чтобы не спрашивать ИИ на каждой остановке в середине слова
-          aiTimer = setTimeout(() => runAI(state.q, my), 350);
+          // правила работают в браузере без сети — для них пауза короткая; ИИ ждёт чуть дольше, чтобы не дёргаться на каждой букве
+          aiTimer = setTimeout(() => runAI(state.q, my), smartMode ? 120 : 320);
         }
       }
       if (!append && !paintLocal()) {

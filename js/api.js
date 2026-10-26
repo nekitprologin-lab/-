@@ -270,62 +270,119 @@
   }
   idxLoad();
 
-  // ---------- умный поиск (ИИ во втором слое) ----------
-  // Worker превращает запрос в параметры AniList (названия, жанры, теги, год), а искать продолжает сам AniList: покрыт весь каталог.
+  // ---------- умный поиск ----------
+  // Сначала правила в браузере (js/smart.js): жанры, теги, год, формат, «как X» — мгновенно и без выдумок.
+  // ИИ (Worker) спрашиваем только там, где правила бессильны: опечатки, русские названия, непонятные запросы.
+  // Планы ИИ запоминаются в браузере на неделю: повторный запрос не ждёт сеть.
   const aiCache = new Map();
+  const AIP_KEY = "tsukimi:aip:v1";
+  let aipStore = {};
+  try { aipStore = JSON.parse(localStorage.getItem(AIP_KEY) || "{}"); } catch (e) {}
+  function aipSave(k, plan) {
+    aipStore[k] = { p: plan, t: Date.now() };
+    const keys = Object.keys(aipStore);
+    if (keys.length > 160) keys.sort((a, b) => aipStore[a].t - aipStore[b].t).slice(0, keys.length - 160).forEach((x) => delete aipStore[x]);
+    try { localStorage.setItem(AIP_KEY, JSON.stringify(aipStore)); } catch (e) {}
+  }
   async function aiPlan(q) {
     const k = q.trim().toLowerCase();
     const w = (window.APP_CONFIG || {}).WORKER_URL;
-    if (!k || !w) return null;
+    if (!k) return null;
     if (aiCache.has(k)) return aiCache.get(k);
+    const st = aipStore[k];
+    if (st && Date.now() - st.t < 7 * 864e5) { aiCache.set(k, st.p); return st.p; }
+    if (!w) return null;
     try {
-      const plan = await timed(w.replace(/\/$/, "") + "/?ai=" + encodeURIComponent(q.trim()), 9000);
+      const plan = await timed(w.replace(/\/$/, "") + "/?ai=" + encodeURIComponent(q.trim()), 8000);
       if (!plan || plan.error) return null;
       aiCache.set(k, plan);
+      aipSave(k, plan);
       return plan;
     } catch (e) { return null; }
   }
-  const AI_Q = `query($s:String,$g:[String],$t:[String],$y:Int,$f:MediaFormat){Page(perPage:18){media(type:ANIME,isAdult:false,search:$s,genre_in:$g,tag_in:$t,seasonYear:$y,format:$f,sort:POPULARITY_DESC){ ${LITE} }}}`;
-  async function aiSearch(q) {
-    const plan = await aiPlan(q);
-    if (!plan) return null;
-    const jobs = [];
-    const nWords = q.split(/\s+/).filter(Boolean).length;
+  const AI_Q = `query($s:String,$g:[String],$t:[String],$y:Int,$f:MediaFormat,$sc:Int){Page(perPage:30){media(type:ANIME,isAdult:false,search:$s,genre_in:$g,tag_in:$t,seasonYear:$y,format:$f,averageScore_greater:$sc,sort:POPULARITY_DESC){ ${LITE} }}}`;
+  const titleOf = (m) => (m && m.title && (m.title.english || m.title.romaji)) || "";
+
+  // подбор по жанрам/тегам/году: если ничего не нашлось, по шагам ослабляем условия (начинаем с самых «лишних»: формата, года)
+  async function byPlan(plan) {
     const g = plan.genres || [], t = plan.tags || [];
-    if (plan.similar_to) {
-      // «похоже на X»: берём рекомендации AniList к X
-      jobs.push(
-        gql(`query($s:String){Media(search:$s,type:ANIME){ id recommendations(sort:RATING_DESC,perPage:16){nodes{mediaRecommendation{ ${LITE} }}}}}`, { s: plan.similar_to })
-          .then((d) => (d.Media.recommendations.nodes || []).map((n) => n.mediaRecommendation).filter(Boolean)).catch(() => [])
-      );
-    } else if ((plan.titles || []).length && nWords <= 3) {
-      // человек назвал конкретное аниме (возможно, с опечаткой или по-русски): ищем по исправленному названию
-      (plan.titles || []).slice(0, 3).forEach((tt) => jobs.push(gql(AI_Q, { s: tt }).then((d) => d.Page.media.slice(0, 6)).catch(() => [])));
-    } else if (g.length || t.length || plan.year) {
-      // описание: подбираем по жанрам, тегам и году; если ничего не нашлось, по шагам ослабляем условия
-      jobs.push((async () => {
-        const tries = [
-          { g, t, y: plan.year, f: plan.format },
-          { g, t, y: plan.year },
-          { g, t },
-          { g: g.slice(0, 2), t: t.slice(0, 1) },
-          { g: g.slice(0, 1), t: t.slice(0, 1) },
-          { t: t.slice(0, 2) },
-          { g: g.slice(0, 2) },
-        ];
-        for (const v of tries) {
-          const vars = { g: v.g && v.g.length ? v.g : undefined, t: v.t && v.t.length ? v.t : undefined, y: v.y || undefined, f: v.f || undefined };
-          if (!vars.g && !vars.t && !vars.y) continue;
-          const items = await gql(AI_Q, vars).then((d) => d.Page.media).catch(() => []);
-          if (items.length) return items;
-        }
-        return [];
-      })());
+    const tries = [
+      { g, t, y: plan.year, f: plan.format, sc: 60 },
+      { g, t, y: plan.year, sc: 60 },
+      { g, t, sc: 60 },
+      { g: g.slice(0, 2), t: t.slice(0, 1), sc: 60 },
+      { g: g.slice(0, 1), t: t.slice(0, 1), sc: 55 },
+      { t: t.slice(0, 2), sc: 55 },
+      { g: g.slice(0, 2), sc: 60 },
+      { t: t.slice(0, 1) },
+      { g: g.slice(0, 1) },
+    ];
+    for (const v of tries) {
+      const vars = { g: v.g && v.g.length ? v.g : undefined, t: v.t && v.t.length ? v.t : undefined, y: v.y || undefined, f: v.f || undefined, sc: v.sc || undefined };
+      if (!vars.g && !vars.t && !vars.y) continue;
+      const items = await gql(AI_Q, vars).then((d) => d.Page.media).catch(() => []);
+      if (items.length >= 3) return items;
     }
-    const lists = await Promise.all(jobs);
+    return [];
+  }
+  const recsOf = (name) =>
+    gql(`query($s:String){Media(search:$s,type:ANIME){ id recommendations(sort:RATING_DESC,perPage:18){nodes{mediaRecommendation{ ${LITE} }}}}}`, { s: name })
+      .then((d) => (d.Media.recommendations.nodes || []).map((n) => n.mediaRecommendation).filter(Boolean)).catch(() => []);
+
+  async function aiSearch(q) {
+    const S = window.Smart;
+    const rules = S ? S.parse(q) : { genres: [], tags: [], descriptive: false, similar: null };
+    const nWords = q.split(/\s+/).filter(Boolean).length;
+    let plan = null, items = [];
+    const extras = rules.genres.length || rules.tags.length || rules.year || rules.format;
+
+    if (rules.similar) {
+      // «как X»: название берём из локального индекса (быстро), латиницей — как есть, иначе спрашиваем ИИ
+      let name = null;
+      if (!hasCyr(rules.similar)) name = rules.similar;
+      else {
+        const loc = localSearch(rules.subjectStem || rules.similar, { limit: 1 })[0];
+        if (loc) name = titleOf(loc);
+      }
+      if (!name) {
+        const ai = await aiPlan(q);
+        name = ai && (ai.similar_to || (ai.titles || [])[0]);
+      }
+      if (name) {
+        plan = { titles: [], similar_to: name, genres: rules.genres, tags: rules.tags, year: rules.year, format: rules.format, src: "similar" };
+        const [recs, more] = await Promise.all([recsOf(name), extras ? byPlan({ genres: rules.genres, tags: rules.tags, year: rules.year, format: rules.format }) : Promise.resolve([])]);
+        // «как X, но про Y»: подборка по Y идёт вперемешку с рекомендациями к X
+        const mixed = [];
+        for (let i = 0; i < Math.max(recs.length, more.length) && mixed.length < 40; i++) { if (more[i]) mixed.push(more[i]); if (recs[i]) mixed.push(recs[i]); }
+        items = mixed;
+      }
+    } else if (rules.descriptive) {
+      plan = { titles: [], similar_to: null, genres: rules.genres, tags: rules.tags, year: rules.year, format: rules.format, src: "rules" };
+      items = await byPlan(plan);
+    }
+
+    if (!plan || !items.length) {
+      // правила не сработали (или ничего не нашли): разбор запроса ИИ
+      const ai = await aiPlan(q);
+      if (!ai) return plan ? { plan, items: [] } : null;
+      plan = { ...ai, src: "ai" };
+      const jobs = [];
+      if (ai.similar_to) jobs.push(recsOf(ai.similar_to));
+      else if ((ai.titles || []).length && nWords <= 3)
+        // назвали конкретное аниме (с опечаткой или по-русски): ищем по исправленному названию
+        ai.titles.slice(0, 3).forEach((tt) => jobs.push(gql(AI_Q, { s: tt }).then((d) => d.Page.media.slice(0, 6)).catch(() => [])));
+      else if ((ai.genres || []).length || (ai.tags || []).length || ai.year) jobs.push(byPlan(ai));
+      items = (await Promise.all(jobs)).flat();
+    }
     const seen = new Set();
-    const items = lists.flat().filter((m) => m && !seen.has(m.id) && seen.add(m.id)).slice(0, 18);
-    return { plan, items };
+    items = items.filter((m) => m && !seen.has(m.id) && seen.add(m.id));
+    // порядок: популярность + совпадение с запросом + вкус человека (просмотренное уходит вниз)
+    try {
+      const tw = window.Store && window.Store.user && S ? S.taste(window.Store.all()) : null;
+      if (S && plan && plan.src !== "ai") items = S.rank(items, plan, tw);
+      else if (S && tw && plan && !(plan.titles || []).length) items = S.rank(items, plan, tw);
+    } catch (e) {}
+    return { plan, items: items.slice(0, 18) };
   }
 
   const PAGE_Q = `query($page:Int,$perPage:Int,$search:String,$genres:[String],$year:Int,$sort:[MediaSort],$season:MediaSeason,$ids:[Int],$mals:[Int]){
@@ -460,6 +517,11 @@
       this._sg.set(k, items);
       return items;
     },
+    // подборка по жанрам/тегам с отсевом слабых оценок и рекомендации AniList к одному тайтлу (для личных рекомендаций)
+    pick: ({ g, t, sc }) => gql(AI_Q, { g: g && g.length ? g : undefined, t: t && t.length ? t : undefined, sc: sc || undefined }).then((d) => d.Page.media).catch(() => []),
+    recsById: (id) =>
+      gql(`query($id:Int){Media(id:$id,type:ANIME){ recommendations(sort:RATING_DESC,perPage:14){nodes{mediaRecommendation{ ${LITE} }}}}}`, { id: Number(id) })
+        .then((d) => (d.Media.recommendations.nodes || []).map((n) => n.mediaRecommendation).filter(Boolean)).catch(() => []),
     byGenre: (genre, perPage = 25) =>
       page({ perPage, genres: [genre], sort: ["POPULARITY_DESC"] }).then((r) => r.items),
 
