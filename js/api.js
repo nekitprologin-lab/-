@@ -300,7 +300,7 @@
       return plan;
     } catch (e) { return null; }
   }
-  const AI_Q = `query($s:String,$g:[String],$t:[String],$y:Int,$f:MediaFormat,$sc:Int){Page(perPage:30){media(type:ANIME,isAdult:false,search:$s,genre_in:$g,tag_in:$t,seasonYear:$y,format:$f,averageScore_greater:$sc,sort:POPULARITY_DESC){ ${LITE} }}}`;
+  const AI_Q = `query($s:String,$g:[String],$t:[String],$y:Int,$f:MediaFormat,$sc:Int,$tr:Int){Page(perPage:30){media(type:ANIME,isAdult:false,search:$s,genre_in:$g,tag_in:$t,minimumTagRank:$tr,seasonYear:$y,format:$f,averageScore_greater:$sc,sort:POPULARITY_DESC){ ${LITE} }}}`;
   const titleOf = (m) => (m && m.title && (m.title.english || m.title.romaji)) || "";
 
   // подбор по жанрам/тегам/году: если ничего не нашлось, по шагам ослабляем условия (начинаем с самых «лишних»: формата, года)
@@ -314,14 +314,16 @@
       { g: g.slice(0, 2), t: t.slice(0, 1), sc: 60 },
       { t: t.slice(0, 2), sc: 60 },
       { g: g.slice(0, 2), y: plan.year, sc: 60 },
-      { g: g.slice(0, 1), t: t.slice(0, 1), sc: 55 },
-      { t: t.slice(0, 1), sc: 55 },
+      { g: g.slice(0, 1), t: t.slice(0, 1), sc: 55, tr: 30 },
+      { t: t.slice(0, 1), sc: 55, tr: 30 },
       { g: g.slice(0, 1), sc: 60 },
     ];
     // Запросы идут волнами (параллельно внутри волны, чтобы было быстро): точные совпадения — первыми, слабые условия добирают до нужного количества.
     const run = (v) => {
       const vars = { g: v.g && v.g.length ? v.g : undefined, t: v.t && v.t.length ? v.t : undefined, y: v.y || undefined, f: v.f || undefined, sc: v.sc || undefined };
       if (!vars.g && !vars.t && !vars.y) return Promise.resolve([]);
+      // тег должен быть выражен в аниме сильно (иначе «еда» находит всё, где один раз поели)
+      if (vars.t) vars.tr = v.tr || 50;
       return gql(AI_Q, vars).then((d) => d.Page.media).catch(() => []);
     };
     const acc = [], seen = new Set();
