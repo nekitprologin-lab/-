@@ -212,6 +212,64 @@
     throw lastErr || new Error("AniList недоступен");
   }
 
+  // ---------- локальный индекс: поиск по буквам без ожидания сети ----------
+  // Скачиваем ~300 самых популярных аниме один раз (хранится в браузере 3 дня) и ищем по ним мгновенно.
+  const IDX_KEY = "tsukimi:idx:v1";
+  let index = [];
+  let idxHay = null;
+  let idxPromise = null;
+  const norm = (t) => String(t || "").toLowerCase().replace(/ё/g, "е").replace(/[^a-z0-9а-я\s]/g, " ").replace(/\s+/g, " ").trim();
+  function idxLoad() {
+    try {
+      const j = JSON.parse(localStorage.getItem(IDX_KEY) || "null");
+      if (j && Array.isArray(j.items)) { index = j.items; idxHay = null; return Date.now() - j.t < 3 * 864e5; }
+    } catch (e) {}
+    return false;
+  }
+  const IDX_Q = `query($page:Int){Page(page:$page,perPage:50){media(type:ANIME,isAdult:false,sort:POPULARITY_DESC){ id idMal synonyms title{romaji english} coverImage{large} format seasonYear averageScore episodes genres status }}}`;
+  function idxBuild() {
+    if (idxPromise) return idxPromise;
+    idxPromise = (async () => {
+      const items = [];
+      for (let p = 1; p <= 6; p += 2) {
+        const parts = await Promise.all([p, p + 1].map((n) => gql(IDX_Q, { page: n }).then((d) => d.Page.media).catch(() => [])));
+        parts.flat().forEach((m) => items.push({ ...m, synonyms: (m.synonyms || []).slice(0, 6) }));
+        if (!parts.flat().length) break;
+      }
+      if (items.length > 50) {
+        index = items; idxHay = null;
+        try { localStorage.setItem(IDX_KEY, JSON.stringify({ t: Date.now(), items })); } catch (e) {}
+      }
+    })().finally(() => { idxPromise = null; });
+    return idxPromise;
+  }
+  function idxWarm() { if (!idxLoad()) idxBuild(); }
+  // поиск по индексу: начало названия важнее начала слова, слово важнее подстроки
+  function localSearch(q, { genre, year, limit = 24 } = {}) {
+    const nq = norm(q);
+    if (!nq || !index.length) return [];
+    if (!idxHay) idxHay = index.map((m) => [m.title && m.title.english, m.title && m.title.romaji, ...(m.synonyms || []), ruByMal(m.idMal)].filter(Boolean).map(norm));
+    const toks = nq.split(" ");
+    const out = [];
+    index.forEach((m, i) => {
+      if (genre && !(m.genres || []).includes(genre)) return;
+      if (year && Number(m.seasonYear) !== Number(year)) return;
+      let best = 0;
+      for (const h of idxHay[i]) {
+        let sc = 0;
+        if (h.startsWith(nq)) sc = 4;
+        else if (toks.every((t) => h.split(" ").some((w) => w.startsWith(t)))) sc = 3;
+        else if (h.includes(nq)) sc = 2;
+        if (sc > best) best = sc;
+        if (best === 4) break;
+      }
+      if (best) out.push([best, i, m]);
+    });
+    out.sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+    return out.slice(0, limit).map((x) => x[2]);
+  }
+  idxLoad();
+
   const PAGE_Q = `query($page:Int,$perPage:Int,$search:String,$genres:[String],$year:Int,$sort:[MediaSort],$season:MediaSeason,$ids:[Int],$mals:[Int]){
     Page(page:$page,perPage:$perPage){
       pageInfo{hasNextPage}
@@ -290,6 +348,8 @@
       // найденное по русскому названию показываем первым
       return { items: [...more.items.filter((m) => add.includes(m)), ...base.items, ...byEn.items.filter((m) => add.includes(m))], hasNext: base.hasNext };
     },
+    localSearch,
+    idxWarm,
     // подсказки при вводе: короткий запрос, результат запоминается по тексту
     _sg: new Map(),
     async suggest(q) {

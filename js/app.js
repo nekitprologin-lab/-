@@ -1,6 +1,7 @@
 // Страницы и роутинг. Адреса вида #/anime/123, #/watch/123/4, #/search?q=...
 (function () {
   const $ = (s, el = document) => el.querySelector(s);
+  const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const app = $("#app");
   const cfg = window.APP_CONFIG;
   const { Api, Store } = window;
@@ -57,6 +58,9 @@
       <div class="sub">${esc(extra || "")}</div>
     </a>`;
   }
+
+  // карточка с появлением по очереди (для результатов поиска и библиотеки)
+  const stag = (html, i) => html.replace('<a class="card"', `<a class="card in" style="--i:${Math.min(i, 20)}"`);
 
   const section = (title, body, right = "") =>
     `<section class="section"><div class="section-head"><h2>${esc(title)}</h2>${right}</div>${body}</section>`;
@@ -181,58 +185,94 @@
       year: params.get("year") || "",
       page: 1,
     };
-    app.innerHTML = `<div class="wrap">
-      <h1 style="font-size:26px">Каталог</h1>
-      <form class="filters" id="f">
-        <input type="search" name="q" placeholder="Название" value="${esc(state.q)}">
+    app.innerHTML = `<div class="wrap cat">
+      <div class="cat-head"><h1>Каталог</h1><p class="muted">Печатай название по-русски или по-английски, результаты появляются сразу.</p></div>
+      <form class="filters" id="f" autocomplete="off">
+        <label class="f-search"><input type="search" name="q" placeholder="Название аниме" value="${esc(state.q)}" aria-label="Название"></label>
         <select class="select" name="sort" aria-label="Сортировка">
           <option value="">${state.q ? "По совпадению" : "По популярности"}</option>
           <option value="SCORE_DESC">По оценке</option>
           <option value="TRENDING_DESC">В тренде</option>
           <option value="START_DATE_DESC">Сначала новые</option>
         </select>
-        <input type="number" name="year" placeholder="Год" min="1960" max="2100" value="${esc(state.year)}">
-        <button class="btn" type="submit">Найти</button>
+        <input type="number" name="year" placeholder="Год" min="1960" max="2100" value="${esc(state.year)}" aria-label="Год">
+        <button class="btn" type="button" id="reset">Сбросить</button>
       </form>
-      <div class="chips" id="genres">${Api.GENRES.map((g) => `<button type="button" class="chip ${g === state.genre ? "on" : ""}" data-genre="${esc(g)}">${esc(Api.genreRu(g))}</button>`).join("")}</div>
-      <div id="results" style="margin-top:24px"><div class="loading">Ищу…</div></div>
+      <div class="chips genre-row" id="genres">${Api.GENRES.map((g) => `<button type="button" class="chip ${g === state.genre ? "on" : ""}" data-genre="${esc(g)}">${esc(Api.genreRu(g))}</button>`).join("")}</div>
+      <div id="results"></div>
     </div>`;
     $("select[name=sort]").value = state.sort;
-
     const results = $("#results");
-    async function run(append) {
-      try {
-        const r = await Api.search({ q: state.q, genres: state.genre ? [state.genre] : [], year: state.year ? Number(state.year) : null, sort: state.sort, page: state.page });
-        if (!append) results.innerHTML = r.items.length ? `<div class="grid"></div>` : `<div class="empty">Ничего не найдено. Попробуй другое название или сними фильтры.</div>`;
-        const grid = $(".grid", results);
-        if (grid) grid.insertAdjacentHTML("beforeend", r.items.map(card).join(""));
-        const old = $(".more", results);
-        if (old) old.remove();
-        if (r.hasNext && grid) {
-          results.insertAdjacentHTML("beforeend", `<button class="btn more">Показать ещё</button>`);
-          $(".more", results).onclick = () => { state.page++; run(true); };
-        }
-      } catch (e) {
-        results.innerHTML = `<div class="empty">Не получилось загрузить: ${esc(e.message)}</div>`;
+    const input = $("input[name=q]");
+    if (!state.q) input.focus();
+
+    let seq = 0, timer = null, shown = "";
+    const skeleton = () => `<div class="grid">${Array.from({ length: 12 }, () => `<div class="card sk"><div class="poster"></div><div class="name"></div><div class="sub"></div></div>`).join("")}</div>`;
+    // не перерисовываем, если список тот же (иначе карточки мигают)
+    function paint(items, hasNext) {
+      const key = items.map((m) => m.id).join(",");
+      if (key === shown && !results.querySelector(".sk")) return;
+      shown = key;
+      results.classList.remove("busy");
+      if (!items.length) { results.innerHTML = `<div class="empty">Ничего не нашлось. Попробуй часть названия или сними фильтры.</div>`; return; }
+      results.innerHTML = `<div class="grid">${items.map((m, i) => stag(card(m), i)).join("")}</div>`;
+      if (hasNext) {
+        results.insertAdjacentHTML("beforeend", `<button class="btn more">Показать ещё</button>`);
+        $(".more", results).onclick = () => { state.page++; run(true); };
       }
     }
-
-    const go = () => {
+    // мгновенный показ из локального индекса, пока идёт запрос в сеть
+    function paintLocal() {
+      if (!state.q || state.sort) return false;
+      const loc = Api.localSearch(state.q, { genre: state.genre, year: state.year });
+      if (!loc.length) return false;
+      paint(loc, false);
+      results.classList.add("busy");
+      return true;
+    }
+    async function run(append) {
+      const my = ++seq;
+      if (!append && !paintLocal()) {
+        if (!results.querySelector(".grid .card:not(.sk)")) results.innerHTML = skeleton(); else results.classList.add("busy");
+        shown = "";
+      }
+      try {
+        const r = await Api.search({ q: state.q, genres: state.genre ? [state.genre] : [], year: state.year ? Number(state.year) : null, sort: state.sort, page: state.page });
+        if (my !== seq) return;
+        if (append) {
+          const grid = $(".grid", results);
+          const old = $(".more", results); if (old) old.remove();
+          grid.insertAdjacentHTML("beforeend", r.items.map((m, i) => stag(card(m), i)).join(""));
+          if (r.hasNext) { results.insertAdjacentHTML("beforeend", `<button class="btn more">Показать ещё</button>`); $(".more", results).onclick = () => { state.page++; run(true); }; }
+        } else paint(r.items, r.hasNext);
+      } catch (e) {
+        if (my !== seq) return;
+        results.classList.remove("busy");
+        if (!results.querySelector(".card:not(.sk)")) results.innerHTML = `<div class="empty">Не получилось загрузить: ${esc(e.message)}</div>`;
+      }
+    }
+    const sync = () => {
       const p = new URLSearchParams();
       Object.entries({ q: state.q, genre: state.genre, sort: state.sort, year: state.year }).forEach(([k, v]) => v && p.set(k, v));
-      location.hash = "#/search" + (p.toString() ? "?" + p : "");
+      history.replaceState(null, "", "#/search" + (p.toString() ? "?" + p : ""));
     };
-    $("#f").onsubmit = (e) => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
-      state.q = fd.get("q").trim(); state.sort = fd.get("sort"); state.year = fd.get("year");
-      go();
-    };
+    const change = (delay) => { state.page = 1; sync(); clearTimeout(timer); if (!delay) return run(false); paintLocal(); timer = setTimeout(() => run(false), delay); };
+    $("#f").onsubmit = (e) => e.preventDefault();
+    input.addEventListener("input", () => { state.q = input.value.trim(); change(state.q ? 200 : 0); });
+    $("select[name=sort]").onchange = (e) => { state.sort = e.target.value; change(0); };
+    $("input[name=year]").addEventListener("input", (e) => { state.year = e.target.value; change(350); });
     $("#genres").onclick = (e) => {
       const b = e.target.closest("[data-genre]");
       if (!b) return;
       state.genre = state.genre === b.dataset.genre ? "" : b.dataset.genre;
-      go();
+      $$("#genres .chip").forEach((c) => c.classList.toggle("on", c.dataset.genre === state.genre));
+      change(0);
+    };
+    $("#reset").onclick = () => {
+      state.q = state.genre = state.sort = state.year = "";
+      $("#f").reset(); input.value = ""; $("select[name=sort]").value = "";
+      $$("#genres .chip").forEach((c) => c.classList.remove("on"));
+      change(0); input.focus();
     };
     run(false);
   }
@@ -772,7 +812,7 @@
     const tabs = [["liked", "Нравится"], ...Object.entries(STATUS), ["history", "История"]];
     const count = (k) => (k === "history" ? hist.length : all.filter((r) => (k === "liked" ? r.liked : r.status === k)).length);
     const fmt = (iso) => { try { return new Date(iso).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
-    const stagger = (html, i) => html.replace('<a class="card"', `<a class="card in" style="--i:${Math.min(i, 24)}"`);
+    const stagger = stag;
     const emptyText = {
       liked: "Нажми «♡ Нравится» на странице аниме, и оно появится здесь.",
       watching: "Здесь будет то, что ты смотришь сейчас. Откроешь серию, и аниме добавится само.",
@@ -1081,11 +1121,15 @@
     if (!q) { sgItems = []; return sgClose(); }
     sgQ = q;
     const my = ++sgSeq;
-    sgPaint(true);
+    // сначала мгновенно из локального индекса, потом дополняем ответом из сети
+    const loc = Api.localSearch(q, { limit: 8 });
+    if (loc.length) { sgItems = loc; sgSel = -1; sgPaint(true); } else sgPaint(true);
     try {
-      const items = await Api.suggest(q);
+      const net = await Api.suggest(q);
       if (my !== sgSeq) return;
-      sgItems = items; sgSel = -1; sgPaint(false);
+      const seen = new Set(loc.map((m) => m.id));
+      sgItems = [...loc, ...net.filter((m) => !seen.has(m.id))].slice(0, 8);
+      sgSel = -1; sgPaint(false);
     } catch (e) {
       if (my !== sgSeq) return;
       sgItems = [];
@@ -1097,7 +1141,10 @@
     clearTimeout(sgTimer);
     const q = qIn.value.trim();
     if (!q) { sgSeq++; sgItems = []; return sgClose(); }
-    sgTimer = setTimeout(sgRun, 140);
+    // локальные подсказки показываем на каждую букву сразу, запрос в сеть — с небольшой паузой
+    const loc = Api.localSearch(q, { limit: 8 });
+    if (loc.length) { sgItems = loc; sgSel = -1; sgPaint(true); }
+    sgTimer = setTimeout(sgRun, 120);
   });
   qIn.addEventListener("focus", () => { if (qIn.value.trim() && sgItems.length) sgPaint(false); });
   qIn.addEventListener("keydown", (e) => {
@@ -1178,6 +1225,11 @@
   };
   document.addEventListener("mouseover", warm);
   document.addEventListener("touchstart", warm, { passive: true });
+
+  setTimeout(() => Api.idxWarm(), 1200); // индекс для мгновенного поиска грузится в фоне
+
+  // у загруженного постера останавливаем анимацию заглушки (меньше нагрузка при прокрутке)
+  document.addEventListener("load", (e) => { const t = e.target; if (t && t.tagName === "IMG") { const p = t.closest && t.closest(".poster"); if (p) p.classList.add("ld"); } }, true);
 
   // шапка становится стеклянной, когда страница прокручена
   const navEl = $("#nav");
