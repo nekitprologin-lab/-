@@ -78,10 +78,14 @@
   }
 
   // Запрос к сервису перевода: сначала через наш Worker (работает и там, где Google закрыт), потом напрямую
+  let trDownUntil = 0;
   async function trFetch(sl, tl, q) {
     const w = (window.APP_CONFIG || {}).WORKER_URL;
-    if (w) { try { const j = await timed(w.replace(/\/$/, "") + "/?tr=" + encodeURIComponent(q) + "&sl=" + sl + "&tl=" + tl, 7000); if (Array.isArray(j)) return j; } catch (e) {} }
-    return timed("https://translate.googleapis.com/translate_a/single?client=gtx&sl=" + sl + "&tl=" + tl + "&dt=t&q=" + encodeURIComponent(q), 7000);
+    if (w) { try { const j = await timed(w.replace(/\/$/, "") + "/?tr=" + encodeURIComponent(q) + "&sl=" + sl + "&tl=" + tl, 6000); if (Array.isArray(j)) return j; } catch (e) {} }
+    // напрямую Google у части провайдеров закрыт: после неудачи пять минут туда не ходим, чтобы не ждать
+    if (Date.now() < trDownUntil) throw new Error("translate down");
+    try { return await timed("https://translate.googleapis.com/translate_a/single?client=gtx&sl=" + sl + "&tl=" + tl + "&dt=t&q=" + encodeURIComponent(q), 3000); }
+    catch (e) { trDownUntil = Date.now() + 300000; throw e; }
   }
 
   // Описания у AniList только английские: переводим (сервис перевода Google), результат запоминаем в браузере

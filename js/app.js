@@ -311,7 +311,7 @@
     const finish = (text, auto) => { if (done || !$("#desc")) return; done = true; showDesc(text, auto); };
     if (m.description) {
       Api.translate(m.description, "d" + m.id).then((ru) => { if (ru) finish(ru, true); });
-      setTimeout(() => finish(plain, false), 9000); // если перевод не пришёл — показываем оригинал
+      setTimeout(() => finish(plain, false), 4500); // если перевод не пришёл — показываем оригинал
     }
     Api.russian(m.idMal).then((r) => {
       if (!$("#h1") || !r) return;
