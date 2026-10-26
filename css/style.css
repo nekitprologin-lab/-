@@ -147,6 +147,7 @@ h2 { font-size: 20px; font-weight: 500; }
 .srcbar .chip.off { opacity: .55; }
 .or { display: flex; align-items: center; gap: 12px; margin: 18px 0 4px; color: var(--muted); font-size: 13px; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.btn.oauth { width: 100%; justify-content: center; margin-top: 12px; }
 .btn.google { width: 100%; justify-content: center; margin-top: 12px; background: #fff; color: #1f1f1f; border-color: #fff; }
 .btn.google:hover { background: #ececf5; }
 .tip { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--muted); font-size: 14px; line-height: 1.45; }

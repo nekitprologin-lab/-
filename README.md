@@ -31,7 +31,7 @@
 
 4. **Authentication → URL Configuration:** в *Site URL* и *Redirect URLs* впиши адрес сайта со слэшем в конце, например `https://nekitprologin-lab.github.io/-/`.
 5. Вход по почте: **Authentication → Providers → Email**. Если не хочешь подтверждать почту при регистрации, выключи **Confirm email**.
-6. Вход через Google (по желанию):
+6. Вход через внешние сервисы (по желанию, по умолчанию выключен). Включи сервис в Supabase (Authentication → Providers) и добавь его в `OAUTH_PROVIDERS` в `js/config.js`, например `["google"]`, `["discord"]` или `["github"]`; тогда на странице входа появится кнопка. Пример для Google:
    - В https://console.cloud.google.com создай проект → **APIs & Services → OAuth consent screen** (External, укажи название и свою почту) → **Credentials → Create credentials → OAuth client ID**, тип *Web application*.
    - В *Authorized redirect URIs* впиши адрес вида `https://xxxx.supabase.co/auth/v1/callback` (он показан в Supabase на странице провайдера Google).
    - Скопируй *Client ID* и *Client secret* в Supabase: **Authentication → Providers → Google**, включи и сохрани.

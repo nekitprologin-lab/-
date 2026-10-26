@@ -48,10 +48,10 @@
       await S._afterLogin(data.user);
     },
 
-    // Вход через Google: уводит на страницу Google и возвращает на сайт, сессию подхватит init()
-    async signInWithGoogle() {
+    // Вход через внешний сервис (google, discord, github): уводит на его страницу и возвращает на сайт, сессию подхватит init()
+    async signInWith(provider) {
       const { error } = await sb.auth.signInWithOAuth({
-        provider: "google",
+        provider,
         options: { redirectTo: location.origin + location.pathname },
       });
       if (error) throw new Error(S._authError(error));
