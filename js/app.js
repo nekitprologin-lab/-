@@ -493,6 +493,38 @@
         clearTimeout(t);
       }
     }
+    let kodikFrame = null, kodikEp = null, kodikSave = 0;
+    function resumeNote(text, onRestart) {
+      const old = $("#resumeBar"); if (old) old.remove();
+      const bar = document.createElement("div");
+      bar.id = "resumeBar"; bar.className = "resume";
+      bar.innerHTML = `<span>${text}</span><button type="button" class="btn" id="resumeRestart">С начала</button>`;
+      box.parentNode.insertBefore(bar, box);
+      bar.querySelector("#resumeRestart").onclick = () => { bar.remove(); onRestart(); };
+      setTimeout(() => bar.isConnected && bar.remove(), 12000);
+    }
+    const onKodikMsg = (ev) => {
+      if (tab !== 2 || !kodikFrame || ev.source !== kodikFrame.contentWindow) return;
+      const d = typeof ev.data === "string" ? (() => { try { return JSON.parse(ev.data); } catch (e) { return null; } })() : ev.data;
+      if (!d || !d.key) return;
+      if (d.key === "kodik_player_current_episode" && d.value) {
+        kodikEp = d.value.episode || kodikEp;
+        if (Store.user && kodikEp) {
+          const lib = Store.get(m.id) || {};
+          const patch = { episode: Number(kodikEp) };
+          if (!lib.status || lib.status === "planned") patch.status = "watching";
+          Store.save(m, patch).catch(() => {});
+          Store.addHistory(m, kodikEp).catch(() => {});
+        }
+      } else if (d.key === "kodik_player_time_update" && Number(d.value) > 5) {
+        const now = Date.now();
+        if (now - kodikSave < 5000) return;
+        kodikSave = now;
+        try { localStorage.setItem(Pos.key(m.id), JSON.stringify({ ep: kodikEp ? String(kodikEp) : "", t: Math.floor(d.value), at: now, src: "kodik" })); } catch (e) {}
+      }
+    };
+    window.addEventListener("message", onKodikMsg);
+    window.addEventListener("hashchange", () => window.removeEventListener("message", onKodikMsg), { once: true });
     function drawGate() {
       $("#epTitle").textContent = "Источник 2 · Kodik";
       note("Ищу плеер…");
@@ -500,7 +532,15 @@
         if (tab !== 2 || !box.isConnected) return; // пока ждали, вкладку или страницу сменили
         if (!r.url) return note(`Плеер временно недоступен<div class="muted" style="font-size:12px;margin-top:8px">${esc(r.err)}</div>`);
         const sb = cfg.WORKER_SANDBOX ? ` sandbox="${esc(cfg.WORKER_SANDBOX)}"` : "";
-        box.innerHTML = `<iframe src="${esc(r.url)}" title="Kodik"${sb} allowfullscreen="true" allow="autoplay *; fullscreen *"></iframe>`;
+        // Kodik сам сообщает странице минуту и серию через postMessage — по ним запоминаем место и продолжаем
+        const saved = Pos.get(m.id);
+        let src = r.url;
+        if (saved && saved.src === "kodik" && saved.t > 10) {
+          src += (src.includes("?") ? "&" : "?") + (saved.ep ? "episode=" + encodeURIComponent(saved.ep) + "&" : "") + "start_from=" + saved.t;
+          resumeNote("Продолжаем " + (saved.ep ? "серию " + esc(saved.ep) + " " : "") + "с " + mmss(saved.t), () => { Pos.clear(m.id); drawGate(); });
+        }
+        box.innerHTML = `<iframe src="${esc(src)}" title="Kodik"${sb} allowfullscreen="true" allow="autoplay *; fullscreen *"></iframe>`;
+        kodikFrame = box.querySelector("iframe");
       });
     }
 
