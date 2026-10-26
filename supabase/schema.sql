@@ -117,6 +117,8 @@ create table if not exists public.history (
   watched_at timestamptz not null default now(),
   primary key (user_id, anime_id, episode)
 );
+alter table public.history add column if not exists position_sec integer;
+alter table public.history add column if not exists source text;
 alter table public.history enable row level security;
 drop policy if exists "history own" on public.history;
 create policy "history own" on public.history for all to authenticated
