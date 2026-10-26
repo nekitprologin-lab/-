@@ -326,8 +326,12 @@
         else if (typeof window.Kinobox === "function") new window.Kinobox(".kinobox_div", opts).init();
         else throw new Error("Kinobox API не найден");
       } catch (e) {
-        kinoboxError(box);
+        return kinoboxError(box);
       }
+      setTimeout(() => {
+        if (el.isConnected && !el.children.length)
+          box.insertAdjacentHTML("beforeend", `<div class="player-note">Kinobox открылся, но за 8 секунд ничего не показал. Плееры внутри него, скорее всего, недоступны из твоей сети.</div>`);
+      }, 8000);
     };
     let s = document.querySelector("script[data-kinobox]");
     if (s && s.dataset.state === "loaded") return start();
@@ -347,11 +351,17 @@
   }
 
   // Режим «изолированно»: виджет живёт в рамке без доступа к странице, твоим аккаунтам и данным сайта.
+  // Внутри рамки видны сообщения, если скрипт не загрузился, упал или ничего не показал.
   function mountKinoboxIsolated(box, id) {
     const doc = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>html,body{margin:0;height:100%;background:#000;color:#aaa;font:14px sans-serif}.kinobox_div{width:100%;height:100%}</style></head>
+<style>html,body{margin:0;height:100%;background:#000;color:#aaa;font:14px sans-serif}.kinobox_div{width:100%;height:100%}
+#kb_log{position:absolute;left:8px;right:8px;bottom:8px;padding:10px 12px;background:#1b1a3a;color:#f3e3a1;border-radius:8px;line-height:1.4}</style>
+<script>
+function kbLog(t){var d=document.getElementById("kb_log");if(!d){d=document.createElement("div");d.id="kb_log";document.body.appendChild(d);}d.textContent=t;}
+window.onerror=function(m){kbLog("Ошибка в скрипте Kinobox: "+m);};
+<\/script></head>
 <body><div class="kinobox_div"></div>
-<script src="${KINOBOX_JS}"><\/script>
+<script src="${KINOBOX_JS}" onerror="kbLog('Скрипт Kinobox не загрузился: kinobox.tv недоступен из твоей сети.')"><\/script>
 <script>
 (function () {
   var o = { search: { shikimori: ${JSON.stringify(String(id))} } };
@@ -359,8 +369,11 @@
     try {
       if (typeof kbox === "function") kbox(".kinobox_div", o);
       else if (typeof Kinobox === "function") new Kinobox(".kinobox_div", o).init();
-      else document.body.textContent = "Kinobox не загрузился";
-    } catch (e) { document.body.textContent = "Kinobox не загрузился: " + e.message; }
+      else { kbLog("Скрипт Kinobox загрузился, но нужной функции в нём нет: сервис мог поменять код."); return; }
+    } catch (e) { kbLog("Kinobox выдал ошибку: " + e.message); return; }
+    setTimeout(function () {
+      if (!document.querySelector(".kinobox_div").children.length) kbLog("Kinobox открылся, но за 8 секунд ничего не показал. Плееры внутри него, скорее всего, недоступны из твоей сети.");
+    }, 8000);
   }
   if (document.readyState === "complete") go(); else window.addEventListener("load", go);
 })();
