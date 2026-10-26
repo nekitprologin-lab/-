@@ -166,9 +166,9 @@ h2 { font-size: 22px; font-weight: 600; }
 .hero {
   position: relative; min-height: min(82vh, 720px); display: flex; align-items: flex-end; overflow: hidden;
   margin-top: calc(var(--nav-h) * -1); padding: calc(var(--nav-h) + 40px) clamp(16px, 4vw, 56px) clamp(36px, 6vw, 72px);
-  background: #080808 center 20% / 108% no-repeat; animation: drift 40s ease-in-out infinite alternate;
+  background: #080808 30% 20% / cover no-repeat; animation: drift 40s ease-in-out infinite alternate;
 }
-@keyframes drift { to { background-size: 122%; background-position: 60% 30%; } }
+@keyframes drift { to { background-position: 70% 45%; } }
 .hero::before {
   content: ""; position: absolute; inset: 0;
   background:
