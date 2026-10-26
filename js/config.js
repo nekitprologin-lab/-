@@ -5,8 +5,8 @@ window.APP_CONFIG = {
   // Облачный режим (аккаунты друзей, общие лайки и история).
   // Пока поля пустые, сайт работает в локальном режиме: данные лежат только в твоём браузере.
   // Где взять значения: Supabase → Project Settings → API.
-  SUPABASE_URL: "",
-  SUPABASE_ANON_KEY: "",
+  SUPABASE_URL: "https://lsscaosxueqmkrulahlx.supabase.co",
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxzc2Nhb3N4dWVxbWtydWxhaGx4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwNDA4NzAsImV4cCI6MjEwODYxNjg3MH0.M3s-qUOgQvo9NsAPzlLhZVyWEBMd4305W5QnQktjux0",
 
   // Видео берётся из AniLibria (публичное API v1) и воспроизводится встроенным плеером на hls.js.
   // Если AniLibria снова поменяет адрес API, поменяй его здесь.
