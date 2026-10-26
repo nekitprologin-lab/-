@@ -597,7 +597,7 @@
     const trailerId = m.trailer && String(m.trailer.site).toLowerCase() === "youtube" && /^[\w-]{6,20}$/.test(m.trailer.id) ? m.trailer.id : null;
     const R = cfg.RESERVE || {};
     const reserveOn = !!(R.enabled && m.idMal);
-    const gateOn = !!(/^https:\/\//.test(cfg.WORKER_URL || "") && m.idMal);
+    const gateOn = !!(/^https:\/\//.test(cfg.WORKER_URL || "") && m.idMal); // Kodik: сначала напрямую, затем через шлюз
 
     // ступень 1: AniLibria, прямой поток m3u8 (умный поиск и ручная карта внутри Libria.find)
     let found = null;
@@ -659,8 +659,28 @@
     }
     // ---- Источник 2: Kodik через шлюз на Cloudflare Workers ----
     const gateCache = (window.__gateCache = window.__gateCache || new Map());
+    // Сначала спрашиваем Kodik напрямую: его API открыт для браузера и доступен без VPN, а адрес workers.dev у части провайдеров закрыт.
+    // Если напрямую не вышло — идём через наш шлюз.
+    async function kodikDirect() {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 5000);
+      try {
+        const res = await fetch("https://kodik-api.com/get-player?token=447d179e875efe44217f20d1ee2146be&shikimoriID=" + encodeURIComponent(m.idMal), { signal: ctrl.signal });
+        if (!res.ok) return null;
+        const j = await res.json();
+        if (!j || !j.link || !(j.found || j.allowed)) return null;
+        return String(j.link).replace(/^(https?:)?\/\/[^/]+\//, "https://aniqit.com/");
+      } catch (e) { return null; } finally { clearTimeout(t); }
+    }
     async function fetchGate() {
       if (gateCache.has(m.idMal)) return gateCache.get(m.idMal);
+      const direct = await kodikDirect();
+      if (direct) {
+        let url = direct;
+        if (cfg.KODIK_HOST && /^https:\/\//.test(cfg.KODIK_HOST)) url = url.replace(/^https:\/\/[^/]+\//, cfg.KODIK_HOST.replace(/\/?$/, "/"));
+        gateCache.set(m.idMal, { url });
+        return { url };
+      }
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 12000);
       try {
