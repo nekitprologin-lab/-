@@ -22,7 +22,7 @@ window.APP_CONFIG = {
   // Источник 2: Kodik через твой шлюз на Cloudflare Workers (код воркера выдан в чате, инструкция в README).
   // Впиши адрес воркера, например "https://kodik-gate.твоё-имя.workers.dev". Пока пусто, вкладка «Источник 2» отключена.
   // Сайт делает запрос WORKER_URL?id=НОМЕР_MYANIMELIST, воркер отвечает JSON {"url": "https://…"}, ссылка идёт в рамку.
-  WORKER_URL: "",
+  WORKER_URL: "https://bold-leaf-6465.nekitpro-login.workers.dev",
   WORKER_SANDBOX: "allow-scripts allow-same-origin allow-forms allow-presentation",
 
   // Источник 3 (крайний случай): плеер megaplay.buzz по номеру MyAnimeList, внутри нашего окна. Язык: английские

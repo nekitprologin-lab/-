@@ -1,0 +1,7 @@
+name = "bold-leaf-6465"
+main = "worker/kodik-gate.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+ALLOW_ORIGIN = "https://nekitprologin-lab.github.io"
+MIRROR = "https://aniqit.com/"
