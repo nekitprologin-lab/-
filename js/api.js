@@ -173,6 +173,7 @@
     (Array.isArray(r) ? r : []).forEach((x) => setRu(x.id, x.russian));
   }
 
+  let proxyDownUntil = 0;
   async function gql(query, variables) {
     const key = JSON.stringify([query, variables]);
     if (cache.has(key)) return cache.get(key);
@@ -182,12 +183,24 @@
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 12000);
       try {
-        const res = await fetch(URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ query, variables }),
-          signal: ctrl.signal,
-        });
+        // сначала через наш Worker (он открывается там, где AniList закрыт, и кэширует ответы), при сбое — напрямую
+        let res = null;
+        const w = (window.APP_CONFIG || {}).WORKER_URL;
+        if (w && Date.now() >= proxyDownUntil) {
+          try {
+            const pu = w.replace(/\/$/, "") + "/?al=1&q=" + encodeURIComponent(query) + "&v=" + encodeURIComponent(JSON.stringify(variables || {}));
+            res = await fetch(pu, { signal: ctrl.signal });
+            if (res.status >= 500 && res.status !== 502 && !(res.headers && res.headers.get && /json/.test(res.headers.get("Content-Type") || ""))) { proxyDownUntil = Date.now() + 60000; res = null; }
+          } catch (e) { proxyDownUntil = Date.now() + 60000; res = null; }
+        }
+        if (!res) {
+          res = await fetch(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ query, variables }),
+            signal: ctrl.signal,
+          });
+        }
         clearTimeout(timer);
         if (res.status === 429 || res.status >= 500) {
           const wait = Math.min(4, Number(res.headers && res.headers.get && res.headers.get("Retry-After")) || 1.5 * (attempt + 1));

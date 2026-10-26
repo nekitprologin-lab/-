@@ -50,6 +50,30 @@ export default {
       return new Response(await r.text(), { status: r.status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400", ...headers } });
     }
 
+    // Прокси к AniList (у части провайдеров он закрыт): ?al=1&q=<запрос GraphQL>&v=<переменные JSON>. Ответы кэшируются на 10 минут.
+    if (new URL(request.url).searchParams.get("al")) {
+      const sp2 = new URL(request.url).searchParams;
+      const query = sp2.get("q") || "";
+      let vars = {};
+      try { vars = JSON.parse(sp2.get("v") || "{}"); } catch (e) { return json({ error: "bad variables" }, 400, headers); }
+      if (!/^\s*query\b/.test(query) || query.length > 8000) return json({ error: "bad query" }, 400, headers);
+      const cacheAl = caches.default;
+      const hitAl = await cacheAl.match(request);
+      if (hitAl) return hitAl;
+      const r = await fetch("https://graphql.anilist.co", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json", "User-Agent": CHROME_UA },
+        body: JSON.stringify({ query, variables: vars }),
+      });
+      const text = await r.text();
+      const resp = new Response(text, {
+        status: r.status,
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": r.ok ? "public, max-age=600" : "no-store", ...headers },
+      });
+      if (r.ok) { try { await cacheAl.put(request, resp.clone()); } catch (e) {} }
+      return resp;
+    }
+
     // Умный поиск: ?ai=запрос (любой язык) -> параметры для AniList. Работает на Workers AI, ответ кэшируется на неделю.
     const aiq = new URL(request.url).searchParams.get("ai");
     if (aiq) {

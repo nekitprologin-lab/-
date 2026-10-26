@@ -207,7 +207,7 @@
     const input = $("input[name=q]");
     if (!state.q) input.focus();
 
-    let seq = 0, timer = null, shown = "", shownIds = new Set(), aiSeq = 0;
+    let seq = 0, timer = null, aiTimer = null, shown = "", shownIds = new Set(), aiSeq = 0;
     const aiBox = $("#aiBox");
     // второй слой: ИИ разбирает запрос (опечатки, смысл, жанры) и подбирает из всего каталога AniList
     async function runAI(q, mySeq) {
@@ -253,7 +253,12 @@
       if (!append) {
         aiSeq++; aiBox.innerHTML = "";
         // длинный запрос, похожий на описание: ИИ стартует сразу, параллельно с обычным поиском
-        if (state.q.length >= 3 && words(state.q) >= 3 && !state.genre && !state.year && !state.sort) { aiStarted = true; runAI(state.q, my); }
+        clearTimeout(aiTimer);
+        if (state.q.length >= 3 && (words(state.q) >= 3 || /[А-Яа-яЁё]/.test(state.q)) && !state.genre && !state.year && !state.sort) {
+          aiStarted = true;
+          // небольшая пауза, чтобы не спрашивать ИИ на каждой остановке в середине слова
+          aiTimer = setTimeout(() => runAI(state.q, my), 350);
+        }
       }
       if (!append && !paintLocal()) {
         if (!results.querySelector(".grid .card:not(.sk)")) results.innerHTML = skeleton(); else results.classList.add("busy");
