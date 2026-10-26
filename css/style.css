@@ -156,7 +156,7 @@ h2 { font-size: 22px; font-weight: 600; }
 .row.ranked { grid-auto-columns: 214px; counter-reset: rank; gap: 6px; }
 .row.ranked .card { counter-increment: rank; padding-left: 38px; }
 .row.ranked .card::before {
-  content: counter(rank); position: absolute; left: -4px; bottom: 46px; z-index: 0;
+  content: counter(rank); position: absolute; left: -2px; top: 168px; z-index: 0;
   font: 800 108px/0.8 var(--font-head); letter-spacing: -.08em; color: transparent; -webkit-text-stroke: 2px rgba(255, 255, 255, .28);
   transition: -webkit-text-stroke-color .3s;
 }
@@ -338,7 +338,7 @@ h2 { font-size: 22px; font-weight: 600; }
   .detail-body .cover { width: 170px; }
   .row { grid-auto-columns: 144px; }
   .row.ranked { grid-auto-columns: 176px; }
-  .row.ranked .card::before { font-size: 84px; }
+  .row.ranked .card::before { font-size: 84px; top: 136px; }
   .row.ranked .card { padding-left: 30px; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(144px, 1fr)); gap: 22px 14px; }
   .srcbar { border-radius: 20px; }
