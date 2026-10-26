@@ -411,9 +411,10 @@
     function drawReserve() {
       $("#epTitle").textContent = "Резервный плеер · серия " + resEp;
       const src = String(R.url).replace(/\{(\w+)\}/g, (_, k) => ({ mal: m.idMal, ep: resEp, lang: resLang }[k] ?? ""));
-      // права рамки из конфига; пустая строка в sandbox убирает ограничения полностью
-      const sb = R.sandbox === "" ? "" : ` sandbox="${esc(R.sandbox || "allow-scripts allow-same-origin allow-forms allow-presentation")}"`;
-      box.innerHTML = `<iframe src="${esc(src)}" title="Резервный плеер"${sb} allowfullscreen="true" allow="autoplay *; fullscreen *" referrerpolicy="no-referrer"></iframe>`;
+      // megaplay отказывает рамкам с sandbox («Sandboxed our player is not allowed») и без реферера (ошибка 410),
+      // поэтому по умолчанию рамка без sandbox и с обычным referrer. Ограничения можно вернуть в config.js (RESERVE.sandbox).
+      const sb = R.sandbox ? ` sandbox="${esc(R.sandbox)}"` : "";
+      box.innerHTML = `<iframe src="${esc(src)}" title="Резервный плеер"${sb} allowfullscreen="true" allow="autoplay *; fullscreen *"></iframe>`;
       epsBox.innerHTML = `<div class="alt-links" role="group" aria-label="Язык">
           <button type="button" class="chip ${resLang === "sub" ? "on" : ""}" data-lang="sub">Английские субтитры</button>
           <button type="button" class="chip ${resLang === "dub" ? "on" : ""}" data-lang="dub">Английская озвучка</button>

@@ -22,10 +22,11 @@ window.APP_CONFIG = {
   // Источник 2 (резерв): плеер megaplay.buzz по номеру MyAnimeList, внутри нашего окна. Язык: английские
   // субтитры или английская озвучка (русской озвучки у него нет). Серии выбираются кнопками под плеером.
   // В адресе подставляются {mal} (номер MyAnimeList), {ep} (серия) и {lang} (sub или dub).
-  // sandbox: права рамки; если плеер уходит в чёрный экран, поставь "" (рамка без ограничений).
+  // sandbox: права рамки. Оставь пустым: megaplay не работает в рамке с sandbox и пишет «Sandboxed our player is not allowed».
+  // Это значит, что сторонний плеер может открывать всплывающие окна, чего песочница не позволяла бы.
   RESERVE: {
     enabled: true,
     url: "https://megaplay.buzz/stream/mal/{mal}/{ep}/{lang}",
-    sandbox: "allow-scripts allow-same-origin allow-forms allow-presentation",
+    sandbox: "",
   },
 };
