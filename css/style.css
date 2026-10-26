@@ -138,19 +138,14 @@ h2 { font-size: 20px; font-weight: 500; }
 /* ---------- плеер ---------- */
 .watch { max-width: 1100px; margin: 0 auto; }
 .player { position: relative; aspect-ratio: 16 / 9; background: #000; border-radius: var(--radius); overflow: hidden; }
-.player iframe, .player .kinobox_div { width: 100%; height: 100%; border: 0; }
+.player video { display: block; width: 100%; height: 100%; background: #000; }
+[hidden] { display: none !important; }
 .player-note { position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 10px 14px; border-radius: 10px; background: var(--panel); color: var(--moon); font-size: 14px; }
 .player-empty { height: 100%; display: grid; place-items: center; text-align: center; padding: 24px; color: var(--muted); }
 .watch-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 16px 0; }
 .watch-bar .grow { flex: 1; min-width: 200px; }
 .watch-bar h1 { font-size: 18px; font-weight: 500; }
 
-.help { margin: 4px 0 8px; padding: 12px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); color: #d6d3f5; }
-.help summary { cursor: pointer; font-weight: 700; color: var(--text); }
-.help ol { padding-left: 20px; }
-.help code { background: var(--ink); padding: 1px 6px; border-radius: 6px; }
-.custom-player { display: flex; flex-wrap: wrap; gap: 8px; }
-.custom-player input { flex: 1; min-width: 240px; padding: 10px 14px; border-radius: 999px; background: var(--ink); border: 1px solid var(--line); }
 
 /* ---------- поиск ---------- */
 .filters { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 6px; align-items: center; }

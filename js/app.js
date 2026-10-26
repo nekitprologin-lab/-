@@ -306,180 +306,193 @@
     };
   }
 
-  // ---------- Kinobox ----------
-  const KINOBOX_JS = "https://on.kinohub.vip/kinobox.min.js"; // по умолчанию; у источника можно задать свой script
+  // ---------- Плеер: hls.js + AniLibria ----------
+  const QUALITIES = [["1080", "1080p"], ["720", "720p"], ["480", "480p"]];
+  let activeHls = null;
+  let hlsLoading = null;
 
-  function kinoboxError(box) {
-    box.innerHTML = `<div class="player-empty"><div>Kinobox не загрузился. Либо адрес скрипта недоступен из твоей сети, либо сервис изменил свой код.<br>Попробуй источник «Kinobox (напрямую)» или открой <a href="#/diag" style="text-decoration:underline">проверку доступности</a>.</div></div>`;
-  }
+  const store = {
+    get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
 
-  // Режим «напрямую»: скрипт Kinobox подключается в саму страницу (так, как описано в его инструкции).
-  function mountKinoboxDirect(box, id, scriptUrl = KINOBOX_JS) {
-    box.innerHTML = `<div class="kinobox_div"></div>`;
-    const el = $(".kinobox_div", box);
-    const opts = { search: { shikimori: String(id) } };
-    const start = () => {
-      if (!el.isConnected || el.dataset.inited) return;
-      el.dataset.inited = "1";
-      try {
-        if (typeof window.kbox === "function") window.kbox(".kinobox_div", opts);
-        else if (typeof window.Kinobox === "function") new window.Kinobox(".kinobox_div", opts).init();
-        else throw new Error("Kinobox API не найден");
-      } catch (e) {
-        return kinoboxError(box);
-      }
-      setTimeout(() => {
-        if (el.isConnected && !el.children.length)
-          box.insertAdjacentHTML("beforeend", `<div class="player-note">Kinobox открылся, но за 8 секунд ничего не показал. Плееры внутри него, скорее всего, недоступны из твоей сети.</div>`);
-      }, 8000);
-    };
-    let s = document.querySelector("script[data-kinobox]");
-    if (s && s.dataset.state === "loaded") return start();
-    if (s && s.dataset.state === "error") return kinoboxError(box);
-    if (!s) {
-      s = document.createElement("script");
-      s.src = scriptUrl;
-      s.async = true;
-      s.dataset.kinobox = "1";
-      s.dataset.state = "loading";
-      s.addEventListener("load", () => (s.dataset.state = "loaded"));
-      s.addEventListener("error", () => (s.dataset.state = "error"));
-      document.head.appendChild(s);
+  // освобождаем плеер, когда уходим со страницы просмотра
+  function stopPlayer() {
+    if (activeHls) {
+      activeHls.destroy();
+      activeHls = null;
     }
-    s.addEventListener("load", start, { once: true });
-    s.addEventListener("error", () => kinoboxError(box), { once: true });
   }
 
-  // Режим «изолированно»: виджет живёт в рамке без доступа к странице, твоим аккаунтам и данным сайта.
-  // Внутри рамки видны сообщения, если скрипт не загрузился, упал или ничего не показал.
-  function mountKinoboxIsolated(box, id, scriptUrl = KINOBOX_JS) {
-    const doc = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>html,body{margin:0;height:100%;background:#000;color:#aaa;font:14px sans-serif}.kinobox_div{width:100%;height:100%}
-#kb_log{position:absolute;left:8px;right:8px;bottom:8px;padding:10px 12px;background:#1b1a3a;color:#f3e3a1;border-radius:8px;line-height:1.4}</style>
-<script>
-function kbLog(t){var d=document.getElementById("kb_log");if(!d){d=document.createElement("div");d.id="kb_log";document.body.appendChild(d);}d.textContent=t;}
-window.onerror=function(m){kbLog("Ошибка в скрипте Kinobox: "+m);};
-<\/script></head>
-<body><div class="kinobox_div"></div>
-<script src="${scriptUrl}" onerror="window.kbFail=1;kbLog('Скрипт Kinobox не загрузился: по этому адресу его больше нет (ошибка 404) или адрес недоступен из твоей сети.')"><\/script>
-<script>
-(function () {
-  var o = { search: { shikimori: ${JSON.stringify(String(id))} } };
-  function go() {
-    if (window.kbFail) return;
-    try {
-      if (typeof kbox === "function") kbox(".kinobox_div", o);
-      else if (typeof Kinobox === "function") new Kinobox(".kinobox_div", o).init();
-      else { kbLog("Скрипт Kinobox загрузился, но нужной функции в нём нет: сервис мог поменять код."); return; }
-    } catch (e) { kbLog("Kinobox выдал ошибку: " + e.message); return; }
-    setTimeout(function () {
-      if (!document.querySelector(".kinobox_div").children.length) kbLog("Kinobox открылся, но за 8 секунд ничего не показал. Плееры внутри него, скорее всего, недоступны из твоей сети.");
-    }, 8000);
-  }
-  if (document.readyState === "complete") go(); else window.addEventListener("load", go);
-})();
-<\/script></body></html>`;
-    box.innerHTML = `<iframe sandbox="allow-scripts allow-presentation allow-forms" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen title="Kinobox"></iframe>`;
-    $("iframe", box).srcdoc = doc;
+  // hls.js подключается только на странице просмотра
+  function loadHls() {
+    if (window.Hls) return Promise.resolve();
+    if (!hlsLoading) {
+      hlsLoading = new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js";
+        s.onload = resolve;
+        s.onerror = () => {
+          hlsLoading = null;
+          s.remove();
+          reject(new Error("не удалось загрузить библиотеку плеера hls.js (cdn.jsdelivr.net)"));
+        };
+        document.head.appendChild(s);
+      });
+    }
+    return hlsLoading;
   }
 
-  async function pageWatch(id, ep) {
+  async function pageWatch(id, epParam) {
     loading();
     const m = await Api.detail(id);
     if (!m) return fail("Аниме не найдено");
-    ep = Math.max(1, Number(ep) || 1);
-    const total = m.episodes || (m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : 0);
-
-    // запись в историю: последняя открытая серия; статус «смотрю», если ещё не задан
-    if (Store.user) {
-      const lib = Store.get(m.id) || {};
-      const patch = { episode: ep };
-      if (!lib.status || lib.status === "planned") patch.status = "watching";
-      if (m.episodes && ep >= m.episodes && lib.status !== "completed") patch.status = "watching";
-      Store.save(m, patch).catch((e) => toast(e.message));
-    }
-
-    // свой плеер (если задан) идёт первым, дальше источники из config.js
-    let custom = "";
-    try { custom = localStorage.getItem("tsukimi:player") || ""; } catch (e) {}
-    const players = [...(custom ? [{ name: "Мой плеер", url: custom }] : []), ...(cfg.PLAYERS || [])];
-    const src = (p) => (p.url || "").replace("{mal_id}", m.idMal || "").replace("{episode}", ep);
-    const hasNext = !total || ep < total;
-
-    let eps = "";
-    for (let i = 1; i <= Math.min(total, 500); i++)
-      eps += `<a class="ep ${i === ep ? "cur" : i < ep ? "done" : ""}" href="#/watch/${m.id}/${i}">${i}</a>`;
 
     app.innerHTML = `<div class="wrap watch">
       <div class="watch-bar">
         <a class="btn" href="#/anime/${m.id}">← ${esc(Api.title(m))}</a>
-        <div class="grow"><h1>Серия ${ep}</h1></div>
-        ${players.length > 1 ? `<select class="select" id="playerSel" aria-label="Источник">${players.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join("")}</select>` : ""}
+        <div class="grow"><h1 id="epTitle">Серия</h1></div>
+        <select class="select" id="qualitySel" aria-label="Качество" hidden></select>
       </div>
-      <div class="player" id="player"></div>
-      <div class="watch-bar">
-        ${ep > 1 ? `<a class="btn" href="#/watch/${m.id}/${ep - 1}">← Назад</a>` : ""}
-        ${hasNext ? `<a class="btn primary" href="#/watch/${m.id}/${ep + 1}">Следующая серия</a>` : `<button class="btn primary" id="doneBtn">Отметить просмотренным</button>`}
-        <a class="btn" id="newTab" target="_blank" rel="noopener noreferrer">Открыть в новой вкладке</a>
+      <div class="player" id="player"><div class="player-empty"><div>Ищу «${esc(Api.title(m))}» в каталоге AniLibria…</div></div></div>
+      <div class="watch-bar" id="navBar" hidden>
+        <button class="btn" id="prevBtn" type="button">← Назад</button>
+        <button class="btn primary" id="nextBtn" type="button">Следующая серия</button>
       </div>
-      <details class="help">
-        <summary>Плеер не открывается?</summary>
-        <p>Ошибка «сайт неожиданно разорвал соединение» значит, что сайт плеера недоступен из твоей сети. Его может блокировать провайдер, или он не пускает через VPN. Сайт Tsukimi тут ни при чём.</p>
-        <ol>
-          <li>Переключи «Источник» над видео: «Kinobox» и «Kinobox (напрямую)» работают по-разному.</li>
-          <li>Включи или выключи VPN и обнови страницу.</li>
-          <li>Вставь ссылку другого плеера ниже. В ссылке можно использовать <code>{mal_id}</code> и <code>{episode}</code>, они подставятся сами.</li>
-        </ol>
-        <form id="customPlayer" class="custom-player">
-          <input name="url" type="url" placeholder="https://…{mal_id}…{episode}" value="${esc(custom)}" aria-label="Ссылка плеера">
-          <button class="btn" type="submit">Сохранить</button>
-          ${custom ? `<button class="btn" type="button" id="resetPlayer">Сбросить</button>` : ""}
-        </form>
-        <p class="muted">Ссылка сохраняется только в этом браузере. <a href="#/diag" style="text-decoration:underline">Проверить, какие сервисы открываются у тебя</a></p>
-      </details>
-      ${total ? section("Серии", `<div class="eps">${eps}</div>`) : ""}
+      <div id="epsBox"></div>
     </div>`;
 
-    function mount(i) {
-      const p = players[i];
-      const box = $("#player");
-      const tab = $("#newTab");
-      if (!p || !m.idMal) {
-        box.innerHTML = `<div class="player-empty"><div>${!m.idMal ? "Для этого аниме нет номера MyAnimeList, плеер подключить нельзя." : "Источники видео не настроены. Добавь плеер в js/config.js."}</div></div>`;
-        tab.style.display = "none";
-        return;
-      }
-      if (p.type === "kinobox") {
-        tab.style.display = "none"; // у виджета нет одной ссылки, которую можно открыть отдельно
-        return p.mode === "direct" ? mountKinoboxDirect(box, m.idMal, p.script || KINOBOX_JS) : mountKinoboxIsolated(box, m.idMal, p.script || KINOBOX_JS);
-      }
-      tab.style.display = "";
-      box.innerHTML = `<iframe src="${esc(src(p))}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="origin" title="Серия ${ep}"></iframe>`;
-      tab.href = src(p);
+    const box = $("#player");
+    const note = (html) => { if (box.isConnected) box.innerHTML = `<div class="player-empty"><div>${html}</div></div>`; };
+    const overlay = (text) => { if (box.isConnected) box.insertAdjacentHTML("beforeend", `<div class="player-note">${esc(text)}</div>`); };
+
+    // 1) ищем релиз в AniLibria
+    let found;
+    try {
+      found = await Libria.find(m);
+    } catch (e) {
+      return note(`AniLibria не отвечает: ${esc(e.message)}.<br>Открой <a href="#/diag" style="text-decoration:underline">проверку доступности</a>, чтобы понять, что закрыто в твоей сети.`);
     }
-    mount(0);
-    const sel = $("#playerSel");
-    if (sel) sel.onchange = () => mount(Number(sel.value));
+    if (!box.isConnected) return; // пока искали, ушли на другую страницу
+    if (!found) return note("Этого аниме нет в каталоге AniLibria, поэтому видео для него не подключить.<br>Выбери другое аниме в <a href=\"#/search\" style=\"text-decoration:underline\">каталоге</a>.");
+    if (found.blocked) return note("AniLibria закрыла это аниме от просмотра (по требованию правообладателя или из-за региона).");
+    const eps = found.episodes;
+    if (!eps.length) return note("У AniLibria пока нет загруженных серий этого аниме.");
 
-    $("#customPlayer").onsubmit = (e) => {
-      e.preventDefault();
-      const url = new FormData(e.target).get("url").trim();
-      if (url && !/^https:\/\//i.test(url)) return toast("Ссылка должна начинаться с https://");
-      try { url ? localStorage.setItem("tsukimi:player", url) : localStorage.removeItem("tsukimi:player"); } catch (err) {}
-      route();
-    };
-    const reset = $("#resetPlayer");
-    if (reset) reset.onclick = () => {
-      try { localStorage.removeItem("tsukimi:player"); } catch (err) {}
-      route();
-    };
+    // 2) подключаем hls.js
+    try {
+      await loadHls();
+    } catch (e) {
+      return note(esc(e.message) + ".<br>Проверь интернет и обнови страницу.");
+    }
+    if (!box.isConnected) return;
 
-    const done = $("#doneBtn");
-    if (done) done.onclick = async () => {
+    // 3) плеер и сетка серий
+    box.innerHTML = `<video id="anime-player" class="anime-player" controls playsinline preload="metadata"></video>`;
+    const video = $("#anime-player");
+    const qSel = $("#qualitySel");
+    const prevBtn = $("#prevBtn");
+    const nextBtn = $("#nextBtn");
+    $("#epsBox").innerHTML = section(
+      "Серии",
+      `<div class="eps">${eps.map((e, i) => `<button type="button" class="ep" data-i="${i}">${esc(e.ordinal)}</button>`).join("")}</div>`
+    );
+
+    let idx = Math.max(0, eps.findIndex((e) => String(e.ordinal) === String(epParam)));
+    let netRetries = 0;
+
+    // лучшее доступное качество не выше выбранного человеком (по умолчанию самое высокое)
+    function pickQuality(e) {
+      const want = Number(store.get("tsukimi:quality") || 1080);
+      const avail = QUALITIES.map(([q]) => q).filter((q) => e.hls[q]);
+      return avail.find((q) => Number(q) <= want) || avail[avail.length - 1];
+    }
+
+    // привязываем поток к <video>; hls.js, а в Safari — встроенная поддержка HLS
+    function attach(url, startAt, autoplay) {
+      stopPlayer();
+      netRetries = 0;
+      const begin = () => {
+        if (startAt) video.currentTime = startAt;
+        if (autoplay) video.play().catch(() => {});
+      };
+      if (window.Hls && window.Hls.isSupported()) {
+        const hls = new window.Hls({ maxBufferLength: 40 });
+        activeHls = hls;
+        hls.on(window.Hls.Events.MANIFEST_PARSED, begin);
+        hls.on(window.Hls.Events.ERROR, (_, d) => {
+          if (!d.fatal) return;
+          if (d.type === window.Hls.ErrorTypes.NETWORK_ERROR && netRetries < 3) {
+            netRetries++;
+            hls.startLoad();
+          } else if (d.type === window.Hls.ErrorTypes.MEDIA_ERROR && netRetries < 3) {
+            netRetries++;
+            hls.recoverMediaError();
+          } else {
+            overlay("Видео не загрузилось: сервер AniLibria (cache.libria.fun) недоступен из твоей сети или поток повреждён.");
+          }
+        });
+        hls.loadSource(url);
+        hls.attachMedia(video);
+      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        video.src = url;
+        video.addEventListener("loadedmetadata", begin, { once: true });
+      } else {
+        overlay("Этот браузер не умеет воспроизводить потоковое видео HLS.");
+      }
+    }
+
+    function select(i, { autoplay = false, startAt = 0 } = {}) {
+      idx = i;
+      const e = eps[i];
+      $("#epTitle").textContent = "Серия " + e.ordinal + (e.name ? ": " + e.name : "");
+      $("#epsBox").querySelectorAll(".ep").forEach((b, j) => {
+        b.classList.toggle("cur", j === i);
+        b.classList.toggle("done", j < i);
+      });
+
+      const avail = QUALITIES.filter(([q]) => e.hls[q]);
+      const q = pickQuality(e);
+      qSel.innerHTML = avail.map(([v, label]) => `<option value="${v}">${label}</option>`).join("");
+      qSel.value = q;
+      qSel.hidden = avail.length < 2;
+
+      const last = i === eps.length - 1;
+      prevBtn.disabled = i === 0;
+      nextBtn.textContent = last ? "Отметить просмотренным" : "Следующая серия";
+      $("#navBar").hidden = false;
+
+      // адрес в строке меняется без перезагрузки страницы
+      history.replaceState(null, "", "#/watch/" + m.id + "/" + e.ordinal);
+      attach(e.hls[q], startAt, autoplay);
+
+      // история: последняя открытая серия; статус «смотрю», если ещё не задан
+      if (Store.user && Number.isInteger(Number(e.ordinal))) {
+        const lib = Store.get(m.id) || {};
+        const patch = { episode: Number(e.ordinal) };
+        if (!lib.status || lib.status === "planned") patch.status = "watching";
+        Store.save(m, patch).catch((err) => toast(err.message));
+      }
+    }
+
+    $("#epsBox").onclick = (ev) => {
+      const b = ev.target.closest(".ep");
+      if (b) select(Number(b.dataset.i), { autoplay: true });
+    };
+    prevBtn.onclick = () => idx > 0 && select(idx - 1, { autoplay: true });
+    nextBtn.onclick = async () => {
+      if (idx < eps.length - 1) return select(idx + 1, { autoplay: true });
       if (!Store.user) return toast("Сначала войди");
-      await Store.save(m, { status: "completed", episode: ep }).catch((e) => toast(e.message));
+      await Store.save(m, { status: "completed", episode: Number(eps[idx].ordinal) }).catch((err) => toast(err.message));
       toast("Отмечено просмотренным");
     };
+    qSel.onchange = () => {
+      store.set("tsukimi:quality", qSel.value);
+      const playing = !video.paused;
+      attach(eps[idx].hls[qSel.value], video.currentTime, playing);
+    };
+
+    select(idx, { autoplay: true });
   }
 
   function pageLibrary(params) {
@@ -559,10 +572,10 @@ window.onerror=function(m){kbLog("Ошибка в скрипте Kinobox: "+m);}
       ["Каталог AniList", "https://graphql.anilist.co/"],
       ["Постеры AniList", "https://s4.anilist.co/"],
       ["Русские названия (Shikimori)", "https://shikimori.one/"],
-      ["Плеер Kinobox (on.kinohub.vip)", "https://on.kinohub.vip/"],
-      ["Плеер Kodik (один из источников Kinobox)", "https://kodik.info/"],
+      ["Каталог видео AniLibria", "https://anilibria.top/"],
+      ["Видеосервер AniLibria", "https://cache.libria.fun/"],
+      ["Библиотека плеера hls.js (jsDelivr)", "https://cdn.jsdelivr.net/"],
       ["Шрифты Google", "https://fonts.googleapis.com/"],
-      ["Библиотека входа (jsDelivr)", "https://cdn.jsdelivr.net/"],
     ];
     app.innerHTML = `<div class="wrap"><h1 style="font-size:26px">Проверка доступности</h1>
       <p class="muted">Показывает, какие сервисы открываются из твоей сети прямо сейчас. Открой эту страницу без VPN и с VPN и сравни.</p>
@@ -599,6 +612,7 @@ window.onerror=function(m){kbLog("Ошибка в скрипте Kinobox: "+m);}
     const [path, query] = hash.split("?");
     const parts = path.split("/").filter(Boolean);
     const params = new URLSearchParams(query || "");
+    stopPlayer();
     drawNav();
     window.scrollTo(0, 0);
     try {

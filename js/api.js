@@ -107,3 +107,74 @@
     },
   };
 })();
+
+// Видео: AniLibria API v1 (публичное, без ключа). Старое v3 закрыто (ошибка 410).
+// Релиз ищем по названию из AniList и сверяем по номеру MyAnimeList/Shikimori, чтобы не перепутать похожие названия.
+(function () {
+  const base = () => window.APP_CONFIG.LIBRIA_API || "https://anilibria.top/api/v1";
+  const cache = new Map();
+
+  async function json(path) {
+    const res = await fetch(base() + path, { headers: { Accept: "application/json" } });
+    if (!res.ok) throw new Error("AniLibria вернул ошибку " + res.status);
+    return res.json();
+  }
+
+  // в ответе mal и shikimori — объекты вида {id, url, ...}; у части релизов заполнено только одно из полей
+  const idsOf = (r) => ["mal", "shikimori"].map((k) => r[k] && r[k].id).filter(Boolean).map(Number);
+
+  // варианты запроса: английское и ромадзи-название, плюс без «Season 2», скобок и подзаголовка
+  function queries(m) {
+    const out = [];
+    [m.title.english, m.title.romaji].forEach((n) => {
+      if (!n) return;
+      out.push(n);
+      const short = n
+        .replace(/\(.*?\)/g, " ")
+        .replace(/\b(season\s*\d+|\d+(st|nd|rd|th)\s+season|part\s*\d+)\b/gi, " ")
+        .replace(/[:\-–].*$/, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (short.length > 2) out.push(short);
+    });
+    return [...new Set(out)];
+  }
+
+  window.Libria = {
+    // -> null (нет в каталоге) | {blocked:true} | {release, episodes:[{ordinal, name, duration, hls:{1080,720,480}}]}
+    async find(m) {
+      const mal = Number(m.idMal);
+      if (!mal) return null;
+      if (cache.has(mal)) return cache.get(mal);
+
+      let hit = null;
+      for (const q of queries(m)) {
+        const r = await json("/app/search/releases?query=" + encodeURIComponent(q));
+        const list = Array.isArray(r) ? r : r.data || [];
+        hit = list.find((x) => idsOf(x).includes(mal));
+        if (hit) break;
+      }
+
+      let out = null;
+      if (hit) {
+        if (hit.is_blocked_by_geo || hit.is_blocked_by_copyrights) {
+          out = { blocked: true };
+        } else {
+          const rel = await json("/anime/releases/" + hit.id);
+          const episodes = (rel.episodes || [])
+            .map((e) => ({
+              ordinal: e.ordinal,
+              name: e.name,
+              duration: e.duration,
+              hls: { 1080: e.hls_1080, 720: e.hls_720, 480: e.hls_480 },
+            }))
+            .filter((e) => e.hls[1080] || e.hls[720] || e.hls[480])
+            .sort((a, b) => a.ordinal - b.ordinal);
+          out = { release: { id: rel.id, name: rel.name && rel.name.main }, episodes };
+        }
+      }
+      cache.set(mal, out); // ошибки сети не кэшируем: они вылетают выше
+      return out;
+    },
+  };
+})();
