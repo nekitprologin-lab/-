@@ -50,6 +50,22 @@
     }
   }
 
+  // Поиск по неполному слову: AniList ищет только по целым словам («torad» ничего не находит), а MyAnimeList (через Jikan) ищет и по началу слова.
+  const jkCache = new Map();
+  let jkDownUntil = 0;
+  async function jikanMals(q) {
+    const k = q.trim().toLowerCase();
+    if (k.length < 2 || hasCyr(k)) return [];
+    if (jkCache.has(k)) return jkCache.get(k);
+    if (Date.now() < jkDownUntil) return [];
+    try {
+      const j = await timed("https://api.jikan.moe/v4/anime?sfw=true&limit=10&q=" + encodeURIComponent(k), 4500);
+      const ids = (j.data || []).map((x) => Number(x.mal_id)).filter(Boolean);
+      jkCache.set(k, ids);
+      return ids;
+    } catch (e) { jkDownUntil = Date.now() + 60000; return []; }
+  }
+
   // Shikimori иногда закрыт провайдером: после первой неудачи пару минут к нему не обращаемся
   let shikiDownUntil = 0;
   async function shiki(path, ms = 3000) {
@@ -225,12 +241,27 @@
         genres: genres && genres.length ? genres : undefined,
         year: year || undefined,
       };
-      const base = await page({
-        page: p || 1,
-        search: q || undefined,
-        ...vars,
-        sort: [q && !sort ? "SEARCH_MATCH" : sort || "POPULARITY_DESC"],
-      });
+      const wantJk = q && !hasCyr(q) && (p || 1) === 1;
+      const [base, jk] = await Promise.all([
+        page({
+          page: p || 1,
+          search: q || undefined,
+          ...vars,
+          sort: [q && !sort ? "SEARCH_MATCH" : sort || "POPULARITY_DESC"],
+        }),
+        wantJk ? jikanMals(q) : Promise.resolve([]),
+      ]);
+      if (wantJk && jk.length) {
+        const known0 = new Set(base.items.map((m) => Number(m.idMal)));
+        const miss = jk.filter((x) => !known0.has(x));
+        if (miss.length) {
+          const more0 = await page({ perPage: 24, mals: miss, ...vars, sort: ["POPULARITY_DESC"] }).catch(() => ({ items: [] }));
+          const seen0 = new Set(base.items.map((m) => m.id));
+          const add0 = more0.items.filter((m) => !seen0.has(m.id));
+          // то, что нашлось по началу слова, показываем первым, если по целым словам почти ничего нет
+          return { items: base.items.length < 4 ? [...add0, ...base.items] : [...base.items, ...add0], hasNext: base.hasNext };
+        }
+      }
       // русский запрос: добавляем то, что нашли AniLibria и Shikimori
       if (!q || !hasCyr(q) || (p || 1) > 1) return base;
       const mals = await ruSearchMals(q).catch(() => []);
@@ -257,8 +288,20 @@
       let items;
       if (hasCyr(k)) items = (await this.search({ q })).items.slice(0, 8);
       else {
-        const d = await gql(`query($s:String){Page(perPage:8){media(search:$s,type:ANIME,isAdult:false,sort:SEARCH_MATCH){ id idMal synonyms title{romaji english} coverImage{medium} format seasonYear averageScore episodes }}}`, { s: q.trim() });
-        items = d.Page.media;
+        const [a, jk] = await Promise.all([
+          gql(`query($s:String){Page(perPage:8){media(search:$s,type:ANIME,isAdult:false,sort:SEARCH_MATCH){ id idMal synonyms title{romaji english} coverImage{medium} format seasonYear averageScore episodes }}}`, { s: q.trim() }).then((d) => d.Page.media).catch(() => []),
+          jikanMals(q),
+        ]);
+        items = a;
+        const miss = jk.filter((x) => !a.some((m) => Number(m.idMal) === x));
+        if (miss.length) {
+          const more = await gql(`query($m:[Int]){Page(perPage:8){media(idMal_in:$m,type:ANIME,isAdult:false,sort:POPULARITY_DESC){ id idMal synonyms title{romaji english} coverImage{medium} format seasonYear averageScore episodes }}}`, { m: miss.slice(0, 8) }).then((d) => d.Page.media).catch(() => []);
+          // порядок Jikan (по релевантности) сохраняем
+          more.sort((x, y) => jk.indexOf(Number(x.idMal)) - jk.indexOf(Number(y.idMal)));
+          items = a.length < 4 ? [...more, ...a] : [...a, ...more];
+        }
+        items = items.filter((m, i, arr) => arr.findIndex((z) => z.id === m.id) === i).slice(0, 8);
+        if (!items.length && !a.length) { /* оба источника пусты */ }
       }
       this._sg.set(k, items);
       return items;
