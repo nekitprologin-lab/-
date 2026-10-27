@@ -537,7 +537,8 @@ html[data-device="mobile"] .seasons::-webkit-scrollbar { display: none; }
 html[data-device="mobile"] .seasons .season { scroll-snap-align: start; flex: 0 0 74%; min-width: 0; }
 
 /* просмотр: плеер на всю ширину, крупные кнопки серий */
-html[data-device="mobile"] .watch { margin: 0 -14px; }
+html[data-device="mobile"] .watch { margin: 0; padding-left: 0; padding-right: 0; }
+html[data-device="mobile"] .srcbar { max-width: calc(100% - 28px); }
 html[data-device="mobile"] .watch > *:not(.player-wrap) { margin-left: 14px; margin-right: 14px; }
 html[data-device="mobile"] .player { border-radius: 0; box-shadow: none; }
 html[data-device="mobile"] .watch-bar { margin: 14px 14px; }

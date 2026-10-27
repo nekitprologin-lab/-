@@ -2,6 +2,8 @@
 // Облачный режим (Supabase) — если заполнены ключи в config.js, иначе локальный (localStorage).
 (function () {
   const cfg = window.APP_CONFIG;
+  // запись в localStorage не должна ронять сайт (приватный режим, переполнение)
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
   const cloud = !!(cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY && window.supabase);
   // PKCE: после входа через Google код приходит в ?code=, а не в #…, который занят адресами страниц сайта
   const sb = cloud ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, { auth: { flowType: "pkce" } }) : null;
@@ -69,7 +71,7 @@
     localLogin(name) {
       name = (name || "").trim();
       if (!name) throw new Error("Введи имя.");
-      localStorage.setItem("tsukimi:user", name);
+      lsSet("tsukimi:user", name);
       S._localLogin(name);
     },
 
@@ -171,7 +173,7 @@
         const { error } = await sb.from("library").upsert({ ...row, user_id: S.user.id }, { onConflict: "user_id,anime_id" });
         if (error) throw new Error("Не удалось сохранить: " + error.message);
       } else {
-        localStorage.setItem("tsukimi:lib:" + S.user.name, JSON.stringify(S.all()));
+        lsSet("tsukimi:lib:" + S.user.name, JSON.stringify(S.all()));
       }
       return row;
     },
@@ -196,7 +198,7 @@
         const { error } = await sb.from("history").upsert({ ...dbRow, user_id: S.user.id }, { onConflict: "user_id,anime_id,episode" });
         if (error) throw new Error("Не удалось сохранить историю: " + error.message);
       } else {
-        localStorage.setItem("tsukimi:hist:" + S.user.name, JSON.stringify(hist));
+        lsSet("tsukimi:hist:" + S.user.name, JSON.stringify(hist));
       }
     },
 
@@ -220,7 +222,7 @@
         const { error } = await sb.from("history").upsert({ ...row, user_id: S.user.id }, { onConflict: "user_id,anime_id,episode" });
         if (error) throw new Error(error.message);
       } else {
-        localStorage.setItem("tsukimi:hist:" + S.user.name, JSON.stringify(hist));
+        lsSet("tsukimi:hist:" + S.user.name, JSON.stringify(hist));
       }
     },
     async clearPosition(animeId) {
@@ -229,14 +231,14 @@
         r.position_sec = null;
         if (cloud) await sb.from("history").update({ position_sec: null }).eq("user_id", S.user.id).eq("anime_id", r.anime_id).eq("episode", r.episode);
       }
-      if (!cloud && S.user) localStorage.setItem("tsukimi:hist:" + S.user.name, JSON.stringify(hist));
+      if (!cloud && S.user) lsSet("tsukimi:hist:" + S.user.name, JSON.stringify(hist));
     },
 
     async remove(animeId) {
       rows.delete(Number(animeId));
       emit();
       if (cloud) await sb.from("library").delete().eq("user_id", S.user.id).eq("anime_id", animeId);
-      else localStorage.setItem("tsukimi:lib:" + S.user.name, JSON.stringify(S.all()));
+      else lsSet("tsukimi:lib:" + S.user.name, JSON.stringify(S.all()));
     },
 
     // ---------- друзья (только облачный режим) ----------

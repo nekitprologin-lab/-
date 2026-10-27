@@ -871,6 +871,9 @@
         if (saved && saved.src === "kodik" && saved.t > 10) {
           src += (src.includes("?") ? "&" : "?") + (saved.ep ? "episode=" + encodeURIComponent(saved.ep) + "&" : "") + "start_from=" + saved.t;
           resumeNote("Продолжаем " + (saved.ep ? "серию " + esc(saved.ep) + " " : "") + "с " + mmss(saved.t), () => { Pos.clear(m.id); drawGate(); });
+        } else if (parseInt(epParam, 10) > 1 && (m.episodes || 2) !== 1) {
+          // открыли конкретную серию по ссылке (из истории, «Продолжить»): просим Kodik начать с неё
+          src += (src.includes("?") ? "&" : "?") + "episode=" + parseInt(epParam, 10);
         }
         box.innerHTML = `<iframe src="${esc(src)}" title="Kodik"${sb} allowfullscreen="true" allow="autoplay *; fullscreen *"></iframe>`;
         kodikFrame = box.querySelector("iframe");
@@ -1149,7 +1152,7 @@
     const body = rows.length
       ? `<div class="friend-list">${rows.map((r) => `<a class="friend" href="#/anime/${r.anime_id}">
           ${r.poster ? `<img src="${esc(r.poster)}" alt="" loading="lazy">` : ""}
-          <div><b>${esc(r.friend)}</b> ${r.liked ? "поставил(а) ♥" : r.episode ? "смотрит серию " + r.episode : STATUS[r.status] ? "добавил(а) в «" + STATUS[r.status] + "»" : "открыл(а)"}
+          <div><b>${esc(r.friend)}</b> ${r.liked ? "поставил(а) ♥" : r.episode ? "смотрит серию " + esc(r.episode) : STATUS[r.status] ? "добавил(а) в «" + STATUS[r.status] + "»" : "открыл(а)"}
           <div>${esc(r.title)}</div></div></a>`).join("")}</div>`
       : `<div class="empty">Друзья пока ничего не отметили.</div>`;
     app.innerHTML = `<div class="wrap"><h1 style="font-size:26px">Друзья</h1><div style="margin-top:20px">${body}</div></div>`;
@@ -1302,7 +1305,7 @@
       link("#/search", "Каталог") +
       (Store.user
         ? link("#/library", "Библиотека") + link("#/friends", "Друзья") +
-          `<div class="usermenu"><button id="userBtn" aria-haspopup="true" aria-expanded="false"><span class="av">${esc(Array.from(Store.user.name)[0].toUpperCase())}</span><span class="un">${esc(Store.user.name)}</span><span class="car">▾</span></button>
+          `<div class="usermenu"><button id="userBtn" aria-haspopup="true" aria-expanded="false"><span class="av">${esc((Array.from(Store.user.name || "?")[0] || "?").toUpperCase())}</span><span class="un">${esc(Store.user.name)}</span><span class="car">▾</span></button>
             <div class="menu" id="userMenu" hidden>
               <a href="#/library">Моя библиотека</a>
               <button type="button" id="addAnimeBtn">Добавить аниме</button>
@@ -1550,13 +1553,17 @@
         if (e.pointerType !== "mouse" || e.button !== 0) return;
         down = true; moved = 0; sx = e.clientX; sl = row.scrollLeft;
       });
-      window.addEventListener("pointermove", (e) => {
+      // обработчики на window снимаем, когда ряд уже убран со страницы (иначе они копились бы при каждом переходе)
+      const onMove = (e) => {
+        if (!row.isConnected) return cleanup();
         if (!down) return;
         const dx = e.clientX - sx;
         moved = Math.max(moved, Math.abs(dx));
         if (moved > 5) { row.classList.add("dragging"); row.scrollLeft = sl - dx; }
-      });
-      const up = () => { if (down) { down = false; setTimeout(() => row.classList.remove("dragging"), 0); } };
+      };
+      const up = () => { if (!row.isConnected) return cleanup(); if (down) { down = false; setTimeout(() => row.classList.remove("dragging"), 0); } };
+      const cleanup = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up); };
+      window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", up);
       window.addEventListener("pointercancel", up);
       // после перетаскивания клик по карточке не должен открывать аниме
