@@ -748,3 +748,32 @@ html:not([data-device="mobile"]) .nav-search input::placeholder { color: rgba(25
 .nav-links > a::after, .usermenu > button::after { background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, .2) 50%, transparent 65%); }
 html:not([data-device="mobile"]) .nav-links > a, html:not([data-device="mobile"]) .usermenu > button { text-shadow: 0 1px 6px rgba(0, 0, 0, .55); }
 html:not([data-device="mobile"]) .nav-links > a.on { text-shadow: none; }
+
+/* ---------- шапка: чистая, без стекла и подложек ---------- */
+html:not([data-device="mobile"]) .logo,
+html:not([data-device="mobile"]) .nav-links > a,
+html:not([data-device="mobile"]) .usermenu > button {
+  background: none; backdrop-filter: none; -webkit-backdrop-filter: none; border: 0; box-shadow: none; border-radius: 999px;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, .85), 0 0 2px rgba(0, 0, 0, .5);
+}
+html:not([data-device="mobile"]) .logo { padding: 0; }
+html:not([data-device="mobile"]) .logo:hover { transform: none; box-shadow: none; }
+html:not([data-device="mobile"]) .nav-links { gap: 4px; }
+html:not([data-device="mobile"]) .nav-links > a, html:not([data-device="mobile"]) .usermenu > button { padding: 8px 14px; color: rgba(255, 255, 255, .85); font-weight: 500; }
+.nav-links > a::after, .usermenu > button::after { display: none; }
+/* подчёркивание вырастает из центра */
+.nav-links > a::before { content: ""; position: absolute; left: 50%; bottom: 3px; width: 0; height: 2px; border-radius: 2px; background: var(--moon); transform: translateX(-50%); transition: width .35s var(--ease); }
+.nav-links > a:hover::before, .nav-links > a.on::before { width: calc(100% - 28px); }
+html:not([data-device="mobile"]) .nav-links > a:hover, html:not([data-device="mobile"]) .usermenu > button:hover { background: none; color: #fff; transform: translateY(-1px); box-shadow: none; border: 0; }
+html:not([data-device="mobile"]) .nav-links > a.on { background: none; color: #fff; text-shadow: 0 1px 10px rgba(0, 0, 0, .85); font-weight: 600; }
+html:not([data-device="mobile"]) .usermenu > button { background: rgba(0, 0, 0, .28); border: 1px solid rgba(255, 255, 255, .16); }
+html:not([data-device="mobile"]) .usermenu > button:hover { background: rgba(0, 0, 0, .4); border: 1px solid rgba(255, 255, 255, .3); }
+/* поиск: тонкое тёмное поле, как раньше */
+html:not([data-device="mobile"]) .nav-search input {
+  background-color: rgba(0, 0, 0, .35); background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d6d4cc' stroke-width='2' stroke-linecap='round'><circle cx='11' cy='11' r='7'/><path d='M20 20l-3.5-3.5'/></svg>");
+  background-position: 16px center; background-size: 18px; background-repeat: no-repeat;
+  backdrop-filter: none; -webkit-backdrop-filter: none; border: 1px solid rgba(255, 255, 255, .16); box-shadow: none; transition: background-color .25s, border-color .25s, box-shadow .3s;
+}
+html:not([data-device="mobile"]) .nav-search input:hover { border-color: rgba(255, 255, 255, .3); }
+html:not([data-device="mobile"]) .nav-search input:focus { background-color: rgba(0, 0, 0, .55); border-color: rgba(255, 255, 255, .45); box-shadow: 0 0 0 4px rgba(255, 255, 255, .08); }
+html:not([data-device="mobile"]) .nav-search input::placeholder { color: rgba(255, 255, 255, .6); }
