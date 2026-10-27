@@ -9,6 +9,8 @@
 //   MIRROR       (Text, по желанию)     домен вместо kodik.info, по умолчанию https://aniqit.com/ (можно https://kodik.cc/)
 
 const DEFAULT_ORIGINS = [
+  "https://tsukimi.us.kg",
+  "https://tsukimi-anime.us.kg",
   "https://tsukimi-anime.netlify.app",
   "https://tsukimi.netlify.app",
   "https://nekitprologin-lab.github.io"

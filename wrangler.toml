@@ -3,7 +3,7 @@ main = "worker/kodik-gate.js"
 compatibility_date = "2024-01-01"
 
 [vars]
-ALLOW_ORIGIN = "https://tsukimi-anime.netlify.app, https://tsukimi.netlify.app, https://nekitprologin-lab.github.io"
+ALLOW_ORIGIN = "https://tsukimi.us.kg, https://tsukimi-anime.us.kg, https://tsukimi-anime.netlify.app, https://tsukimi.netlify.app, https://nekitprologin-lab.github.io"
 MIRROR = "https://aniqit.com/"
 
 # Перевод описаний через Workers AI (бесплатный лимит есть на любом аккаунте)
