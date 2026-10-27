@@ -8,17 +8,24 @@
 //                                       Значение "*" разрешает всем (тогда шлюзом смогут пользоваться чужие сайты).
 //   MIRROR       (Text, по желанию)     домен вместо kodik.info, по умолчанию https://aniqit.com/ (можно https://kodik.cc/)
 
-const DEFAULT_ORIGIN = "https://nekitprologin-lab.github.io";
+const DEFAULT_ORIGINS = [
+  "https://tsukimi.netlify.app",
+  "https://nekitprologin-lab.github.io"
+];
 const DEFAULT_MIRROR = "https://aniqit.com/";
 const PUBLIC_TOKEN = "447d179e875efe44217f20d1ee2146be";
 const CHROME_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 
 function cors(request, env) {
-  const allow = env.ALLOW_ORIGIN || DEFAULT_ORIGIN;
-  const origin = request.headers.get("Origin") || "";
+  const allowRaw = env.ALLOW_ORIGIN || "";
+  const allowed = allowRaw
+    ? allowRaw.split(",").map((s) => s.trim().replace(/\/$/, "")).filter(Boolean)
+    : DEFAULT_ORIGINS;
+  const origin = (request.headers.get("Origin") || "").replace(/\/$/, "");
+  const matched = allowed.includes("*") ? "*" : allowed.includes(origin) ? origin : allowed[0];
   return {
-    "Access-Control-Allow-Origin": allow === "*" ? "*" : origin === allow ? origin : allow,
+    "Access-Control-Allow-Origin": matched,
     "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Max-Age": "86400",
