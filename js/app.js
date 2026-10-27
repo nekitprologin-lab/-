@@ -607,7 +607,7 @@
     if (!m) return fail("Аниме не найдено");
     setTitle("Смотреть: " + Api.title(m));
 
-    app.innerHTML = `<div class="watch-bg" id="watchBg" aria-hidden="true"><i></i></div><div class="wrap watch">
+    app.innerHTML = `<div class="watch-bg" id="watchBg" aria-hidden="true" style="--glow:${esc((m.coverImage && m.coverImage.color) || '#6f6af8')}"></div><div class="wrap watch">
       <div class="watch-bar">
         <a class="btn" href="#/anime/${m.id}">← ${esc(Api.title(m))}</a>
         <div class="grow"><h1 id="epTitle">Серия</h1></div>
@@ -632,15 +632,6 @@
     </div>`;
 
     const box = $("#player");
-
-    // подсветка по краям: размытая картинка этого аниме (сначала баннер/обложка, потом широкая обложка Kitsu)
-    {
-      const bgEl = $("#watchBg i");
-      const put = (u) => { const im = new Image(); im.onload = () => { if (!bgEl.isConnected) return; bgEl.style.backgroundImage = "url('" + u + "')"; $("#watchBg").classList.add("on"); }; im.src = u; };
-      const first = m.bannerImage || (m.coverImage && m.coverImage.large);
-      if (first) put(first);
-      Api.heroImg(m).then((u) => { if (u && u !== first) put(u); });
-    }
 
     // ---------- пропуск опенинга и эндинга ----------
     // Тайминги: AniLibria (точные, у части релизов) или AniSkip (по номеру MyAnimeList и серии, сверяется длина серии).
