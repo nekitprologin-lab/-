@@ -104,7 +104,12 @@ export default {
         headers: { Accept: "application/json" },
         cf: { cacheTtl: 3600, cacheEverything: true },
       });
-      return new Response(r.body, { status: r.status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=1800", ...headers } });
+      const jh = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=1800", ...headers };
+      // ?slim=1: оставляем только нужные сайту поля. Ответ в 3–5 раз легче: на медленных и урезаемых провайдерами каналах это разница между «грузится» и «зависло»
+      if (new URL(request.url).searchParams.get("slim") === "1" && r.ok) {
+        try { return new Response(JSON.stringify(slimTmdb(await r.json())), { status: 200, headers: jh }); } catch (e) { /* отдаём как есть */ }
+      }
+      return new Response(r.body, { status: r.status, headers: jh });
     }
 
     // Умный поиск: ?ai=запрос (любой язык) -> параметры для AniList. Работает на Workers AI, ответ кэшируется на неделю.
@@ -267,3 +272,23 @@ export default {
     return json({ url }, 200, { ...headers, "Cache-Control": "public, max-age=1800" });
   },
 };
+
+// Сжатие ответов TMDB: список карточек, страница фильма/сериала или список серий сезона
+function slimTmdb(j) {
+  const cut = (t, n) => (t ? String(t).slice(0, n) : t);
+  // описание и фон нужны только первым карточкам (обложка главной), остальным они не нужны
+  const card = (m, i) => { const o = { id: m.id, media_type: m.media_type, title: m.title, name: m.name, poster_path: m.poster_path, vote_average: m.vote_average, release_date: m.release_date, first_air_date: m.first_air_date, genre_ids: m.genre_ids }; if (i < 4) { o.backdrop_path = m.backdrop_path; o.overview = cut(m.overview, 230); } return o; };
+  if (Array.isArray(j.results) && j.id === undefined) return { page: j.page, total_pages: j.total_pages, results: j.results.map(card) };
+  if (Array.isArray(j.episodes)) return { episodes: j.episodes.map((e) => ({ episode_number: e.episode_number, name: e.name })) };
+  if (j.id !== undefined) {
+    const o = {};
+    ["id", "title", "name", "original_title", "original_name", "overview", "vote_average", "release_date", "first_air_date", "runtime", "number_of_seasons", "status", "tagline", "genres", "poster_path", "backdrop_path", "imdb_id"].forEach((k) => { if (j[k] !== undefined) o[k] = j[k]; });
+    if (j.external_ids) o.external_ids = { imdb_id: j.external_ids.imdb_id };
+    if (j.seasons) o.seasons = j.seasons.map((x) => ({ season_number: x.season_number, name: x.name }));
+    if (j.credits) o.credits = { cast: (j.credits.cast || []).slice(0, 8).map((c) => ({ name: c.name })) };
+    if (j.recommendations) o.recommendations = { results: (j.recommendations.results || []).slice(0, 14).map((m) => card(m, 9)) };
+    if (j.videos) o.videos = { results: (j.videos.results || []).filter((v) => v.site === "YouTube" && (v.type === "Trailer" || v.type === "Teaser")).slice(0, 4).map((v) => ({ site: v.site, type: v.type, key: v.key, iso_639_1: v.iso_639_1, official: v.official })) };
+    return o;
+  }
+  return j;
+}

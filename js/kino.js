@@ -12,38 +12,72 @@
   const img = (size, path) => baseNow() + "?img=/" + size + path;
   const mem = new Map();
 
-  // запрос к шлюзу: по очереди пробуем оба адреса, у каждого ограничение по времени
+  // запрос к шлюзу: сначала пробуем запомненный адрес, а если он молчит дольше 3 секунд, параллельно запускаем второй. Побеждает тот, кто ответил первым
   async function gate(query, timeoutMs) {
     const list = bases();
     if (!list.length) throw new Error("Шлюз не настроен");
-    let lastErr;
-    for (let i = 0; i < list.length; i++) {
-      const base = list[i];
+    const one = async (base) => {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), timeoutMs || 9000);
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs || 25000);
       try {
         const r = await fetch(base + "?" + query, { signal: ctrl.signal });
-        clearTimeout(timer);
         if (r.status === 501) throw new Error("not_configured");
-        if (r.status >= 500 && i < list.length - 1) { lastErr = new Error("Ошибка сервера (" + r.status + ")"); continue; }
-        try { localStorage.setItem("tsukimi:wbase", base); } catch (e) {}
-        return r;
+        if (r.status >= 500) throw new Error("Ошибка сервера (" + r.status + ")");
+        const body = r.ok ? await r.text() : "";
+        return { base, status: r.status, ok: r.ok, body };
       } catch (e) {
-        clearTimeout(timer);
         if (e.message === "not_configured") throw e;
-        lastErr = e.name === "AbortError" ? new Error("Каталог не отвечает: соединение с сервером зависло (таймаут)") : new Error("Нет связи с сервером каталога (" + (e.message || "ошибка сети") + ")");
-      }
-    }
-    throw lastErr;
+        throw e.name === "AbortError" ? new Error("Каталог не отвечает: соединение с сервером зависло (таймаут)") : new Error("Нет связи с сервером каталога (" + (e.message || "ошибка сети") + ")");
+      } finally { clearTimeout(timer); }
+    };
+    const res = await new Promise((resolve, reject) => {
+      let pending = 0, done = false, lastErr;
+      const start = (base) => {
+        pending++;
+        one(base).then((r) => { if (!done) { done = true; resolve(r); } }, (e) => {
+          if (e.message === "not_configured" && !done) { done = true; return reject(e); }
+          lastErr = e; pending--;
+          if (!done && pending <= 0 && started >= list.length) { done = true; reject(lastErr); }
+          else if (!done && pending <= 0) startNext();
+        });
+      };
+      let started = 0, timer = null;
+      const startNext = () => { clearTimeout(timer); if (started < list.length) { start(list[started++]); if (started < list.length) timer = setTimeout(startNext, 3000); } };
+      startNext();
+    });
+    try { localStorage.setItem("tsukimi:wbase", res.base); } catch (e) {}
+    return { ok: res.ok, status: res.status, json: async () => JSON.parse(res.body), text: async () => res.body };
   }
+
+  // кэш ответов на телефоне: повторное открытие мгновенное; если сеть упала, показываем прошлую копию
+  const ckey = (path) => "tsukimi:kc:" + path;
+  const cget = (path) => { try { const v = JSON.parse(localStorage.getItem(ckey(path)) || "null"); return v && v.j ? v : null; } catch (e) { return null; } };
+  const cput = (path, j) => {
+    const put = () => localStorage.setItem(ckey(path), JSON.stringify({ t: Date.now(), j }));
+    try { put(); } catch (e) {
+      try { // место кончилось: чистим самые старые копии
+        const ks = Object.keys(localStorage).filter((k) => k.startsWith("tsukimi:kc:")).map((k) => [k, (JSON.parse(localStorage.getItem(k)) || {}).t || 0]).sort((a, b) => a[1] - b[1]);
+        ks.slice(0, Math.ceil(ks.length / 2) + 1).forEach(([k]) => localStorage.removeItem(k));
+        put();
+      } catch (e2) {}
+    }
+  };
+  const FRESH = 45 * 60 * 1000, STALE = 7 * 24 * 3600 * 1000;
 
   async function tmdb(path) {
     if (mem.has(path)) return mem.get(path);
-    const r = await gate("tmdb=" + encodeURIComponent(path), 9000);
-    if (!r.ok) throw new Error("Не удалось загрузить каталог (" + r.status + ")");
-    const j = await r.json();
-    mem.set(path, j);
-    return j;
+    const c = cget(path);
+    if (c && Date.now() - c.t < FRESH) { mem.set(path, c.j); return c.j; }
+    try {
+      const r = await gate("tmdb=" + encodeURIComponent(path) + "&slim=1", 25000);
+      if (!r.ok) throw new Error("Не удалось загрузить каталог (" + r.status + ")");
+      const j = await r.json();
+      mem.set(path, j); cput(path, j);
+      return j;
+    } catch (e) {
+      if (c && Date.now() - c.t < STALE) { mem.set(path, c.j); return c.j; }
+      throw e;
+    }
   }
 
   const L = "language=ru-RU";
@@ -62,17 +96,17 @@
   const title = (m) => m.title || m.name || "";
   const year = (m) => String(m.release_date || m.first_air_date || "").slice(0, 4);
 
-  function card(m, def) {
+  function card(m, def, size) {
     const k = kind(m, def);
     if (k !== "movie" && k !== "tv") return "";
     const sub = [year(m), k === "tv" ? "Сериал" : "Фильм"].filter(Boolean).join(", ");
     return `<a class="card" href="#/${k}/${m.id}">
-      <div class="poster">${m.poster_path ? `<img src="${img("w342", m.poster_path)}" alt="" loading="lazy">` : ""}
+      <div class="poster">${m.poster_path ? `<img src="${img(size || "w342", m.poster_path)}" alt="" loading="lazy">` : ""}
         ${m.vote_average ? `<span class="score">${m.vote_average.toFixed(1)}</span>` : ""}</div>
       <div class="name">${esc(title(m))}</div><div class="sub">${esc(sub)}</div></a>`;
   }
   const section = (t, body) => `<section class="section"><div class="section-head"><h2>${esc(t)}</h2></div>${body}</section>`;
-  const rowOf = (list, def, ranked) => `<div class="row${ranked ? " ranked" : ""}">${list.map((m) => card(m, def)).join("")}</div>`;
+  const rowOf = (list, def, ranked) => `<div class="row${ranked ? " ranked" : ""}">${list.map((m) => card(m, def, "w185")).join("")}</div>`;
 
   async function home(app) {
     const rows = [
@@ -109,7 +143,7 @@
       const m = (trend.results || []).filter((x) => x.backdrop_path)[0];
       const el = app.querySelector("#kHero");
       if (!m || !el) return;
-      el.innerHTML = `<div class="kino-hero" style="background-image:url('${img("w1280", m.backdrop_path)}')"><div class="kino-hero-in wrap">
+      el.innerHTML = `<div class="kino-hero" style="background-image:url('${img("w780", m.backdrop_path)}')"><div class="kino-hero-in wrap">
         <span class="hero-tag">В тренде</span><h1>${esc(title(m))}</h1>
         <p>${esc((m.overview || "").slice(0, 220))}${(m.overview || "").length > 220 ? "…" : ""}</p>
         <a class="btn primary" href="#/${m.media_type === "tv" ? "tv" : "movie"}/${m.id}">Открыть</a></div></div>`;
@@ -210,11 +244,11 @@
     const item = { type, id: m.id, title: ttl, poster_path: m.poster_path, genres: (m.genres || []).map((g) => g.name), score: m.vote_average };
     const lib = (window.Store && window.Store.user && window.Store.get(window.Store.kid(type, m.id))) || {};
     const seasons = isTv ? (m.seasons || []).filter((x) => x.season_number > 0) : [];
-    const banner = m.backdrop_path ? img("w1280", m.backdrop_path) : "";
+    const banner = m.backdrop_path ? img("w780", m.backdrop_path) : "";
     app.innerHTML = `<div class="detail">
       <div class="detail-banner" style="background-image:url('${esc(banner)}')"></div>
       <div class="wrap detail-body">
-        ${m.poster_path ? `<img class="cover" src="${esc(img("w500", m.poster_path))}" alt="">` : ""}
+        ${m.poster_path ? `<img class="cover" src="${esc(img("w342", m.poster_path))}" alt="">` : ""}
         <div>
           <h1 id="h1">${esc(ttl)}</h1>
           ${orig ? `<div class="alt">${esc(orig)}</div>` : ""}
