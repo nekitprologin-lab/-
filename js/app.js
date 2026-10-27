@@ -32,9 +32,12 @@
     const pct = lib && lib.episode && total ? Math.min(100, Math.round((lib.episode / total) * 100)) : 0;
     const poster = m.coverImage && m.coverImage.large;
     const sub = [m.seasonYear, STATUS_FORMAT[m.format]].filter(Boolean).join(", ");
-    return `<a class="card" href="#/anime/${m.id}">
-      <div class="poster" style="background:${esc((m.coverImage && m.coverImage.color) || "var(--panel)")}">
+    const gen = (m.genres || []).slice(0, 2).join(" · ");
+    const col = (m.coverImage && m.coverImage.color) || "";
+    return `<a class="card" href="#/anime/${m.id}"${col ? ` style="--c:${esc(col)}"` : ""}>
+      <div class="poster" style="background:${esc(col || "var(--panel)")}">
         ${poster ? `<img src="${esc(poster)}" alt="" loading="lazy">` : ""}
+        ${gen || m.episodes ? `<span class="gen">${gen ? `<b>${esc(gen)}</b>` : ""}${m.episodes ? `<em>${m.episodes} эп.</em>` : ""}</span>` : ""}
         ${m.averageScore ? `<span class="score">${(m.averageScore / 10).toFixed(1)}</span>` : ""}
         ${lib && lib.liked ? `<span class="heart" title="Нравится">♥</span>` : ""}
         ${pct ? `<span class="bar"><i style="width:${pct}%"></i></span>` : ""}
