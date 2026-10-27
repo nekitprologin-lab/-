@@ -1116,10 +1116,10 @@
     app.innerHTML = `<div class="wrap lib">
       <div class="lib-head"><h1>Библиотека</h1>
         <div class="lib-stats">
-          <span><b>${all.length}</b> в библиотеке</span>
-          <span><b>${all.filter((r) => r.status === "completed").length}</b> просмотрено</span>
-          <span><b>${all.filter((r) => r.liked).length}</b> нравится</span>
-          <span><b>${hist.length}</b> серий в истории</span>
+          <span title="Сколько тайтлов с отметкой статуса или «Нравится». Каждый сезон считается отдельно."><b>${all.filter((r) => r.status || r.liked).length}</b> в библиотеке</span>
+          <span title="Тайтлы со статусом «Просмотрено»"><b>${all.filter((r) => r.status === "completed").length}</b> просмотрено</span>
+          <span title="Тайтлы, которым ты поставил «Нравится»"><b>${all.filter((r) => r.liked).length}</b> нравится</span>
+          <span title="Сколько серий открыто за всё время"><b>${hist.length}</b> серий в истории</span>
         </div></div>
       ${cont}
       <div class="lib-tabs" role="tablist">${tabs.map(([k, v]) => `<a role="tab" class="${k === tab ? "on" : ""}" href="#/library?tab=${k}">${v}<em>${count(k)}</em></a>`).join("")}</div>
