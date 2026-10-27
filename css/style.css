@@ -1,6 +1,6 @@
 /* Tsukimi — чёрная тема. Один акцент: лунный «костяной» цвет; красный только у сердечка. */
 :root {
-  --bg: #000;
+  --bg: #030304;
   --ink: #000;
   --s1: #0d0d0d;
   --panel: #0d0d0d;
@@ -27,9 +27,15 @@ body {
   margin: 0; background: var(--bg); color: var(--text);
   font: 400 16px/1.6 var(--font-body); -webkit-font-smoothing: antialiased;
 }
-/* едва заметное зерно, чтобы чёрный не был плоским */
-body {
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='.045'/></svg>");
+/* чистый глубокий чёрный: без зерна, только очень мягкий объём (большие размытые отсветы и виньетка) */
+body { background-color: #030304; }
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none;
+  background:
+    radial-gradient(ellipse 60% 45% at 12% -5%, rgba(236, 228, 204, .055), transparent 70%),
+    radial-gradient(ellipse 55% 50% at 100% 35%, rgba(120, 130, 190, .045), transparent 70%),
+    radial-gradient(ellipse 70% 40% at 20% 105%, rgba(236, 228, 204, .035), transparent 70%),
+    radial-gradient(ellipse 120% 90% at 50% 50%, transparent 55%, rgba(0, 0, 0, .55) 100%);
 }
 ::selection { background: var(--moon); color: var(--moon-ink); }
 a { color: inherit; text-decoration: none; }
@@ -386,7 +392,7 @@ h2 { font-size: 22px; font-weight: 600; }
 
 /* ---------- ряды: стрелки и перетаскивание ---------- */
 .row-wrap { position: relative; }
-.row-wrap::after { content: ""; position: absolute; top: 0; right: 0; bottom: 16px; width: 64px; pointer-events: none; background: linear-gradient(to right, transparent, #000); transition: opacity .3s; }
+.row-wrap::after { content: ""; position: absolute; top: 0; right: 0; bottom: 16px; width: 64px; pointer-events: none; background: linear-gradient(to right, transparent, var(--bg)); transition: opacity .3s; }
 .row-wrap.at-end::after { opacity: 0; }
 .row { cursor: grab; }
 .row.dragging { cursor: grabbing; scroll-snap-type: none; scroll-behavior: auto; }
