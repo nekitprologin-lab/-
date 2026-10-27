@@ -614,3 +614,24 @@ html[data-device="mobile"] .skip-btn { right: 10px; bottom: 62px; }
 .card .name { margin-top: 12px; font-size: 14.5px; font-weight: 600; }
 .card .sub { font-size: 12.5px; }
 @media (hover: none) { .card .gen { display: none; } }
+
+/* ---------- ряды на всю ширину: карточки растягиваются, ряд заканчивается ровно у края ---------- */
+html:not([data-device="mobile"]) .wrap { max-width: 1760px; }
+html:not([data-device="mobile"]) .row:not(.ranked) {
+  --n: 5; --gap: 20px; gap: var(--gap);
+  grid-auto-columns: calc((100% - (var(--n) - 1) * var(--gap)) / var(--n));
+}
+@media (min-width: 900px)  { html:not([data-device="mobile"]) .row:not(.ranked) { --n: 6; } }
+@media (min-width: 1300px) { html:not([data-device="mobile"]) .row:not(.ranked) { --n: 7; } }
+@media (min-width: 1650px) { html:not([data-device="mobile"]) .row:not(.ranked) { --n: 8; } }
+html:not([data-device="mobile"]) .row:not(.ranked) .card .poster { width: 100%; }
+html:not([data-device="mobile"]) .row.ranked {
+  --n: 5; --gap: 14px; gap: var(--gap);
+  grid-auto-columns: calc((100% - (var(--n) - 1) * var(--gap)) / var(--n));
+}
+@media (min-width: 900px)  { html:not([data-device="mobile"]) .row.ranked { --n: 6; } }
+@media (min-width: 1300px) { html:not([data-device="mobile"]) .row.ranked { --n: 7; } }
+@media (min-width: 1650px) { html:not([data-device="mobile"]) .row.ranked { --n: 8; } }
+html:not([data-device="mobile"]) .row.ranked .card { width: auto; }
+html:not([data-device="mobile"]) .row.ranked .poster { width: 100%; }
+html:not([data-device="mobile"]) .row.ranked .card::before { top: auto; bottom: 92px; font-size: 104px; }
