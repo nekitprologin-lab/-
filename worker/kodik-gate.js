@@ -48,7 +48,7 @@ export default {
   async fetch(request, env) {
     const headers = cors(request, env);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
-    if (request.method !== "GET") return json({ error: "method not allowed" }, 405, headers);
+    if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method not allowed" }, 405, headers);
 
     // Прокси к Shikimori для русских названий (у части провайдеров он закрыт): ?shiki=/animes?ids=1,2
     const sp = new URL(request.url).searchParams.get("shiki");
