@@ -89,6 +89,12 @@
       const c = JSON.parse(localStorage.getItem(ckey) || "null");
       if (c && c.fp === fp && Date.now() - c.t < 30 * 60000 && c.items && c.items.length) return c.items;
     } catch (e) {}
+    // на аккаунте лежит готовый профиль: если библиотека не менялась, берём его (на любом устройстве, мгновенно)
+    const cloud = await Store.tasteLoad();
+    if (cloud && cloud.fp === fp && Array.isArray(cloud.recs) && cloud.recs.length && Date.now() - new Date(cloud.updated_at).getTime() < 12 * 3600e3) {
+      try { localStorage.setItem(ckey, JSON.stringify({ fp, t: Date.now(), items: cloud.recs })); } catch (e) {}
+      return cloud.recs;
+    }
 
     const anchors = lib
       .filter((r) => r.liked || r.status === "completed")
@@ -141,6 +147,10 @@
       out.push(c.m);
     }
     try { localStorage.setItem(ckey, JSON.stringify({ fp, t: Date.now(), items: out })); } catch (e) {}
+    // сохраняем профиль на аккаунт (компактно: только то, что нужно для карточек)
+    const slim = out.map((m) => ({ id: m.id, idMal: m.idMal || null, title: m.title, synonyms: (m.synonyms || []).slice(0, 3), coverImage: m.coverImage ? { large: m.coverImage.large, color: m.coverImage.color } : null, averageScore: m.averageScore || null, episodes: m.episodes || null, status: m.status || null, format: m.format || null, seasonYear: m.seasonYear || null, genres: (m.genres || []).slice(0, 4) }));
+    const wTop = {}; top.forEach((g) => { wTop[g] = Math.round(tw.weights[g] * 10) / 10; });
+    Store.tasteSave({ fp, top_genres: top, weights: wTop, recs: slim });
     return out;
   }
 

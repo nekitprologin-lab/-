@@ -73,6 +73,19 @@
       S._localLogin(name);
     },
 
+    // профиль вкусов и рекомендации на аккаунте (облако); если таблицы ещё нет или режим локальный, просто возвращаем null
+    async tasteLoad() {
+      if (!cloud || !S.user) return null;
+      try {
+        const { data, error } = await sb.from("taste_profiles").select("fp,top_genres,weights,recs,updated_at").eq("user_id", S.user.id).maybeSingle();
+        return error ? null : data;
+      } catch (e) { return null; }
+    },
+    async tasteSave(p) {
+      if (!cloud || !S.user) return;
+      try { await sb.from("taste_profiles").upsert({ user_id: S.user.id, ...p, updated_at: new Date().toISOString() }, { onConflict: "user_id" }); } catch (e) {}
+    },
+
     async signOut() {
       if (cloud) await sb.auth.signOut();
       else localStorage.removeItem("tsukimi:user");

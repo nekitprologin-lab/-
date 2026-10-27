@@ -818,3 +818,7 @@ html:not([data-device="mobile"]) .logo::before { width: 22px; height: 22px; box-
 .usermenu > button[aria-expanded="true"] .car { transform: rotate(180deg); }
 html:not([data-device="mobile"]) .usermenu > button { padding: 4px 14px 4px 4px; background: rgba(0, 0, 0, .3); border: 1px solid rgba(255, 255, 255, .14); }
 html:not([data-device="mobile"]) .nav::before { display: block; height: calc(var(--nav-h) + 30px); background: linear-gradient(to bottom, rgba(0, 0, 0, .55), rgba(0, 0, 0, 0)); }
+
+/* ---------- фикс цветных полос по краям постеров ---------- */
+.card .poster { background: #0d0d0d !important; }
+.card .poster img { display: block; position: absolute; inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px); max-width: none; }
