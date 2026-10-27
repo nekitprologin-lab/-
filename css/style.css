@@ -652,3 +652,15 @@ html:not([data-device="mobile"]) .row.ranked {
 }
 html:not([data-device="mobile"]) .row.ranked .card { width: calc(var(--pw) + var(--pad)); }
 html:not([data-device="mobile"]) .row.ranked .poster { width: var(--pw); }
+
+/* ---------- карточки крупнее (раньше сжимались до 150px) ---------- */
+@media (min-width: 1px)    { html:not([data-device="mobile"]) .row:not(.ranked) { --n: 4; } html:not([data-device="mobile"]) .row.ranked { --n: 3; } }
+@media (min-width: 900px)  { html:not([data-device="mobile"]) .row:not(.ranked) { --n: 5; } html:not([data-device="mobile"]) .row.ranked { --n: 4; } }
+@media (min-width: 1250px) { html:not([data-device="mobile"]) .row:not(.ranked) { --n: 6; } html:not([data-device="mobile"]) .row.ranked { --n: 4; } }
+@media (min-width: 1500px) { html:not([data-device="mobile"]) .row:not(.ranked) { --n: 7; } html:not([data-device="mobile"]) .row.ranked { --n: 5; } }
+@media (min-width: 1900px) { html:not([data-device="mobile"]) .row:not(.ranked) { --n: 8; } html:not([data-device="mobile"]) .row.ranked { --n: 6; } }
+/* при прокрутке ряда эффекты наведения выключены, края постеров не мерцают */
+.row.scrolling .card { pointer-events: none; }
+.row.scrolling .card:hover { transform: none; }
+.card .poster { isolation: isolate; transform: translateZ(0); }
+.card img { backface-visibility: hidden; }

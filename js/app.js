@@ -1524,6 +1524,11 @@
         next.classList.toggle("off", row.scrollLeft + row.clientWidth >= row.scrollWidth - 8);
         wrap.classList.toggle("at-end", row.scrollLeft + row.clientWidth >= row.scrollWidth - 8);
       };
+      // картинки в ряду грузим сразу (иначе при пролистывании на секунду видны пустые заглушки-полосы)
+      row.querySelectorAll('img[loading="lazy"]').forEach((im) => { im.loading = "eager"; im.decoding = "async"; });
+      // пока ряд листается, отключаем эффекты наведения: карточки под курсором не мигают
+      let stT = null;
+      row.addEventListener("scroll", () => { row.classList.add("scrolling"); clearTimeout(stT); stT = setTimeout(() => row.classList.remove("scrolling"), 180); }, { passive: true });
       row.addEventListener("scroll", upd, { passive: true });
       setTimeout(upd, 60); setTimeout(upd, 600);
       const step = () => Math.max(240, row.clientWidth * 0.85);
