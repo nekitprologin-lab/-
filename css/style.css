@@ -777,3 +777,23 @@ html:not([data-device="mobile"]) .nav-search input {
 html:not([data-device="mobile"]) .nav-search input:hover { border-color: rgba(255, 255, 255, .3); }
 html:not([data-device="mobile"]) .nav-search input:focus { background-color: rgba(0, 0, 0, .55); border-color: rgba(255, 255, 255, .45); box-shadow: 0 0 0 4px rgba(255, 255, 255, .08); }
 html:not([data-device="mobile"]) .nav-search input::placeholder { color: rgba(255, 255, 255, .6); }
+
+/* ---------- цифры топа: белые объёмные, на наведении «выскакивают» ---------- */
+.row.ranked .card::before {
+  background-image: linear-gradient(175deg, #ffffff 0%, #f1f1f1 45%, #bdbdbd 100%); background-size: 100% 100%;
+  filter: drop-shadow(1px 1px 0 #6a6a6a) drop-shadow(2px 2px 0 #565656) drop-shadow(3px 3px 0 #424242) drop-shadow(4px 4px 0 #2e2e2e) drop-shadow(0 10px 16px rgba(0, 0, 0, .85));
+  transform-origin: 30% 80%;
+}
+.row.ranked .card:hover::before {
+  background-image: linear-gradient(175deg, #ffffff 0%, #ffffff 40%, #d0d0d0 100%);
+  filter: drop-shadow(2px 2px 0 #7a7a7a) drop-shadow(4px 4px 0 #626262) drop-shadow(6px 6px 0 #4a4a4a) drop-shadow(8px 8px 0 #323232) drop-shadow(0 14px 22px rgba(0, 0, 0, .9));
+  transform: translateY(-6px) rotate(-3deg) scale(1.06);
+  animation: numpop .65s var(--spring);
+}
+@keyframes numpop {
+  0% { transform: translateY(0) rotate(0) scale(1); }
+  35% { transform: translateY(-16px) rotate(-8deg) scale(1.14); }
+  70% { transform: translateY(-3px) rotate(-1deg) scale(1.03); }
+  100% { transform: translateY(-6px) rotate(-3deg) scale(1.06); }
+}
+@media (prefers-reduced-motion: reduce) { .row.ranked .card:hover::before { animation: none; } }
