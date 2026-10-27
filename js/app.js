@@ -1292,7 +1292,7 @@
       link("#/search", "Каталог") +
       (Store.user
         ? link("#/library", "Библиотека") + link("#/friends", "Друзья") +
-          `<div class="usermenu"><button id="userBtn" aria-haspopup="true" aria-expanded="false">${esc(Store.user.name)} ▾</button>
+          `<div class="usermenu"><button id="userBtn" aria-haspopup="true" aria-expanded="false"><span class="av">${esc(Array.from(Store.user.name)[0].toUpperCase())}</span><span class="un">${esc(Store.user.name)}</span><span class="car">▾</span></button>
             <div class="menu" id="userMenu" hidden>
               <a href="#/library">Моя библиотека</a>
               <button type="button" id="addAnimeBtn">Добавить аниме</button>
@@ -1584,10 +1584,12 @@
     const y = window.scrollY;
     navEl.classList.toggle("scrolled", y > 24);
     // на телефоне шапка уходит при прокрутке вниз и возвращается при прокрутке вверх (но не пока открыт поиск)
+    // на ПК тоже: вниз — шапка прячется, вверх — возвращается; так она не наезжает на контент
     const mobile = document.documentElement.getAttribute("data-device") === "mobile";
     const typing = document.activeElement && navEl.contains(document.activeElement) && document.activeElement.tagName === "INPUT";
-    if (mobile && !typing && y > 120 && y > lastY + 6) navEl.classList.add("hide");
-    else if (y < lastY - 6 || y <= 120 || !mobile || typing) navEl.classList.remove("hide");
+    const menuOpen = !!document.querySelector("#userMenu:not([hidden])");
+    if (!typing && !menuOpen && y > 120 && y > lastY + 6) navEl.classList.add("hide");
+    else if (y < lastY - 6 || y <= 120 || typing || menuOpen) navEl.classList.remove("hide");
     if (Math.abs(y - lastY) > 6) lastY = y;
   };
   window.addEventListener("scroll", onScroll, { passive: true });
