@@ -829,3 +829,14 @@ html:not([data-device="mobile"]) .nav::before { display: block; height: calc(var
 /* ---------- фикс цветных полос по краям постеров ---------- */
 .card .poster { background: #0d0d0d !important; }
 .card .poster img { display: block; position: absolute; inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px); max-width: none; }
+
+/* ---------- общий визуальный полиш ---------- */
+.genre-row { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 56px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 56px), transparent); }
+.auth { margin-top: 56px; padding-bottom: 28px; background: linear-gradient(180deg, #131315, #0d0d0f); border-color: rgba(255,255,255,.09); box-shadow: 0 30px 80px rgba(0,0,0,.8), 0 0 90px rgba(244,239,228,.04); }
+.auth input { transition: border-color .25s, box-shadow .25s, background .25s; }
+.auth input:focus, .srcbar input:focus, .filters input:focus { outline: none; border-color: rgba(244,239,228,.55); box-shadow: 0 0 0 4px rgba(244,239,228,.08); }
+.desc { max-width: 64ch; font-size: 15.5px; color: #bdbbb4; }
+.chips .chip { transition: transform .35s var(--spring), background .25s, border-color .25s, color .25s; }
+.chips .chip:hover { transform: translateY(-2px); border-color: rgba(244,239,228,.5); }
+.section-title, .row-head h2 { letter-spacing: .01em; }
+html[data-device="mobile"] .nav { background: linear-gradient(180deg, rgba(0,0,0,.85), rgba(0,0,0,.6)); }
