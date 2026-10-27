@@ -124,35 +124,13 @@
       urlCache = (await r.json()).url;
       return urlCache;
     }
-    // запасной источник: агрегатор плееров Kinobox (ищет по IMDb), когда в Kodik фильма нет
-    function loadScript(src) {
-      return new Promise((res, rej) => {
-        if (window.Kinobox) return res();
-        const sc = document.createElement("script");
-        sc.src = src; sc.onload = res; sc.onerror = () => rej(new Error("не удалось загрузить kinobox.tv"));
-        document.head.appendChild(sc);
-      });
-    }
-    async function fallback() {
-      await loadScript("https://kinobox.tv/kinobox.min.js");
-      box.innerHTML = `<div class="kb" id="kbBox" style="min-height:420px"></div><div class="muted" style="margin-top:8px;font-size:13px">Источник: агрегатор плееров. Если плеер не запускается, выбери другой источник в списке над видео.</div>`;
-      const search = ids.imdb_id ? { imdb: ids.imdb_id } : { title: orig || ttl, year: year(m) ? +year(m) : undefined };
-      if (!window.Kinobox) throw new Error("Kinobox не загрузился (скрипт недоступен)");
-      new window.Kinobox("#kbBox", { search, menu: { enabled: true } }).init();
-    }
     async function play(season, episode) {
       box.innerHTML = `<div class="loading">Ищу плеер…</div>`;
       try {
         let src = await getUrl();
         if (isTv) src += (src.includes("?") ? "&" : "?") + "season=" + season + "&episode=" + episode;
         box.innerHTML = `<iframe src="${esc(src)}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="origin" style="width:100%;aspect-ratio:16/9;border:0;border-radius:14px;background:#000"></iframe>`;
-      } catch (e) {
-        try { await fallback(); }
-        catch (e2) {
-          try { console.warn("kinobox fallback failed", e2); } catch (x) {}
-          box.innerHTML = `<div class="empty">${esc(e.message)}<br><span style="font-size:12px;opacity:.7">Запасной источник: ${esc(e2 && e2.message || e2)}</span></div>`;
-        }
-      }
+      } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
     let curS = seasons[0] ? seasons[0].season_number : 1, curE = 1;
     async function drawEps(sn) {
