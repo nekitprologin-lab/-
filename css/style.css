@@ -664,3 +664,21 @@ html:not([data-device="mobile"]) .row.ranked .poster { width: var(--pw); }
 .row.scrolling .card:hover { transform: none; }
 .card .poster { isolation: isolate; transform: translateZ(0); }
 .card img { backface-visibility: hidden; }
+
+/* ---------- объёмные цифры в «В тренде» ---------- */
+.row.ranked .card::before {
+  color: transparent; -webkit-text-stroke: 0;
+  background: linear-gradient(170deg, #fffdf2 0%, #cfc7ad 38%, #6f6a58 72%, #2c2a22 100%);
+  -webkit-background-clip: text; background-clip: text;
+  filter: drop-shadow(1px 1px 0 #3a372c) drop-shadow(2px 2px 0 #2f2d24) drop-shadow(3px 3px 0 #25231c) drop-shadow(4px 4px 0 #1b1a15) drop-shadow(0 10px 16px rgba(0, 0, 0, .85));
+  transition: filter .35s, transform .4s var(--ease);
+}
+.row.ranked .card:hover::before {
+  background: linear-gradient(170deg, #fffdf2 0%, #ece4cc 40%, #a99d70 75%, #4a4330 100%);
+  filter: drop-shadow(1px 1px 0 #5a5030) drop-shadow(2px 2px 0 #463e26) drop-shadow(3px 3px 0 #342e1c) drop-shadow(4px 4px 0 #242013) drop-shadow(0 10px 18px rgba(0, 0, 0, .9)) drop-shadow(0 0 16px rgba(236, 228, 204, .35));
+  transform: translateY(-4px);
+}
+html:not([data-device="mobile"]) .row.ranked { --pw: calc((100cqw - 4px - (var(--n) - 1) * var(--gap)) / var(--n) - 72px); }
+html:not([data-device="mobile"]) .row.ranked .card { --pad: 72px; }
+html:not([data-device="mobile"]) .row.ranked .card:nth-child(n+10) { --pad: 130px; }
+html:not([data-device="mobile"]) .row.ranked .card::before { font-size: 118px; bottom: 96px; left: 2px; }
