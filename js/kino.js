@@ -111,14 +111,14 @@
       ${recs.length ? `<div class="wrap">${section("Похожее", rowOf(recs, type))}</div>` : ""}
     </div>`;
 
-    const ids = m.external_ids || {};
+    const ids = { imdb_id: m.imdb_id || (m.external_ids && m.external_ids.imdb_id) || "" };
     const box = app.querySelector("#kPlayer");
     let urlCache = null;
     async function getUrl() {
       if (urlCache) return urlCache;
       const w = cfg.WORKER_URL;
       const q = ids.imdb_id ? "imdb=" + ids.imdb_id : "";
-      if (!q) throw new Error("У этого " + (isTv ? "сериала" : "фильма") + " нет IMDb-номера, плеер не найти.");
+      if (!q) throw new Error("Для этого " + (isTv ? "сериала" : "фильма") + " пока нет данных для поиска плеера (слишком свежий релиз).");
       const r = await fetch(w + (w.includes("?") ? "&" : "?") + q);
       if (!r.ok) throw new Error("Плеер для этого " + (isTv ? "сериала" : "фильма") + " не нашёлся. Возможно, его нет в источнике.");
       urlCache = (await r.json()).url;
@@ -134,10 +134,10 @@
       });
     }
     async function fallback() {
-      if (!ids.imdb_id) throw new Error("no imdb");
       await loadScript("https://kinobox.tv/kinobox.min.js");
       box.innerHTML = `<div class="kb" id="kbBox" style="min-height:420px"></div><div class="muted" style="margin-top:8px;font-size:13px">Источник: агрегатор плееров. Если плеер не запускается, выбери другой источник в списке над видео.</div>`;
-      new window.Kinobox("#kbBox", { search: { imdb: ids.imdb_id }, menu: { enabled: true } }).init();
+      const search = ids.imdb_id ? { imdb: ids.imdb_id } : { title: orig || ttl, year: year(m) ? +year(m) : undefined };
+      new window.Kinobox("#kbBox", { search, menu: { enabled: true } }).init();
     }
     async function play(season, episode) {
       box.innerHTML = `<div class="loading">Ищу плеер…</div>`;
