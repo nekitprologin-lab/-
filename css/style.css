@@ -907,3 +907,7 @@ html[data-device="mobile"] .kino-hero { min-height: 400px; }
 html[data-device="mobile"] .kino-hero p { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 14.5px; }
 html[data-device="mobile"][data-mode="kino"] .nav .logo { font-size: 17px; }
 html[data-device="mobile"] .nav-links { margin-left: auto; }
+html[data-mode="kino"] .btn.primary { border-color: var(--moon); }
+html[data-mode="kino"] .chip.on, html[data-mode="kino"] .ep.cur, html[data-mode="kino"] .srcbar .chip.on { background: var(--moon); color: var(--moon-ink); border-color: var(--moon); }
+.kino-player { margin-top: 18px; }
+#kWatch { padding-top: 28px; }

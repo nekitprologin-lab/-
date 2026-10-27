@@ -194,8 +194,16 @@ export default {
       return done(new Response(await r.text(), { status: 200, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=86400", ...headers } }));
     }
 
-    const id = new URL(request.url).searchParams.get("id") || "";
-    if (!/^\d{1,9}$/.test(id)) return json({ error: "id must be a number" }, 400, headers);
+    const qp = new URL(request.url).searchParams;
+    const id = qp.get("id") || "";
+    const imdb = qp.get("imdb") || "";
+    const kp = qp.get("kp") || "";
+    // фильмы и сериалы ищутся по IMDb (tt1234567) или Кинопоиску, аниме — по номеру MyAnimeList/Shikimori
+    let sQ, pQ;
+    if (/^tt\d{5,10}$/.test(imdb)) { sQ = "imdb_id=" + imdb; pQ = "imdbID=" + imdb; }
+    else if (/^\d{1,9}$/.test(kp)) { sQ = "kinopoisk_id=" + kp; pQ = "kinopoiskID=" + kp; }
+    else if (/^\d{1,9}$/.test(id)) { sQ = "shikimori_id=" + id; pQ = "shikimoriID=" + id; }
+    else return json({ error: "id must be a number" }, 400, headers);
 
     const userToken = String(env.KODIK_TOKEN || "").trim();
     if (!userToken && !PUBLIC_TOKEN) return json({ error: "KODIK_TOKEN is not set" }, 500, headers);
@@ -212,7 +220,7 @@ export default {
     // 1. Поиск через search API
     if (userToken) {
       try {
-        const api = "https://kodik-api.com/search?token=" + encodeURIComponent(userToken) + "&shikimori_id=" + id;
+        const api = "https://kodik-api.com/search?token=" + encodeURIComponent(userToken) + "&" + sQ;
         const res = await fetch(api, {
           headers: reqHeaders,
           cf: { cacheTtl: 3600, cacheEverything: true },
@@ -233,7 +241,7 @@ export default {
       const tokensToTry = [userToken, PUBLIC_TOKEN].filter(Boolean);
       for (const t of tokensToTry) {
         try {
-          const api = "https://kodik-api.com/get-player?token=" + encodeURIComponent(t) + "&shikimoriID=" + id;
+          const api = "https://kodik-api.com/get-player?token=" + encodeURIComponent(t) + "&" + pQ;
           const res = await fetch(api, {
             headers: reqHeaders,
             cf: { cacheTtl: 3600, cacheEverything: true },

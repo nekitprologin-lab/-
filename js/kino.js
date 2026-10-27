@@ -66,9 +66,103 @@
     app.innerHTML = h + `</div>`;
   }
 
-  function soon(app) {
-    app.innerHTML = `<div class="wrap"><div class="empty">Страница фильма и плеер уже в работе. <a href="#/kino">Назад в Киноман</a></div></div>`;
+  const STATUS_TV = { "Returning Series": "Выходит", Ended: "Завершён", Canceled: "Отменён", "In Production": "В производстве", Planned: "Анонс" };
+
+  async function detail(app, type, id) {
+    if (!/^\d{1,9}$/.test(String(id || ""))) { app.innerHTML = `<div class="wrap"><div class="empty">Такой страницы нет. <a href="#/kino">В Киноман</a></div></div>`; return; }
+    app.innerHTML = `<div class="loading">Загружаю…</div>`;
+    let m;
+    try { m = await tmdb(`/${type}/${id}?${L}&append_to_response=external_ids,credits,recommendations`); }
+    catch (e) { app.innerHTML = `<div class="wrap"><div class="empty">${esc(e.message === "not_configured" ? "Каталог ещё подключается." : e.message)}</div></div>`; return; }
+    const isTv = type === "tv";
+    const ttl = title(m);
+    const orig = (m.original_title || m.original_name) && (m.original_title || m.original_name) !== ttl ? m.original_title || m.original_name : "";
+    const meta = [
+      m.vote_average ? `<span><b>${m.vote_average.toFixed(1)}</b> оценка</span>` : "",
+      year(m) ? `<span>${year(m)}</span>` : "",
+      isTv ? `<span>Сериал</span>` : `<span>Фильм</span>`,
+      !isTv && m.runtime ? `<span>${Math.floor(m.runtime / 60) ? Math.floor(m.runtime / 60) + " ч " : ""}${m.runtime % 60} мин</span>` : "",
+      isTv && m.number_of_seasons ? `<span>${m.number_of_seasons} сез.</span>` : "",
+      isTv && m.status ? `<span>${esc(STATUS_TV[m.status] || m.status)}</span>` : "",
+    ].join("");
+    const cast = ((m.credits && m.credits.cast) || []).slice(0, 8).map((c) => c.name).join(", ");
+    const recs = ((m.recommendations && m.recommendations.results) || []).slice(0, 14);
+    const seasons = isTv ? (m.seasons || []).filter((x) => x.season_number > 0) : [];
+    const banner = m.backdrop_path ? img("w1280", m.backdrop_path) : "";
+    app.innerHTML = `<div class="detail">
+      <div class="detail-banner" style="background-image:url('${esc(banner)}')"></div>
+      <div class="wrap detail-body">
+        ${m.poster_path ? `<img class="cover" src="${esc(img("w500", m.poster_path))}" alt="">` : ""}
+        <div>
+          <h1 id="h1">${esc(ttl)}</h1>
+          ${orig ? `<div class="alt">${esc(orig)}</div>` : ""}
+          <div class="meta">${meta}</div>
+          <div class="chips">${(m.genres || []).map((g) => `<span class="chip">${esc(g.name)}</span>`).join("")}</div>
+          <div class="actions"><button type="button" class="btn primary" id="kPlay">Смотреть</button></div>
+          ${m.tagline ? `<div class="alt" style="margin-top:18px">«${esc(m.tagline)}»</div>` : ""}
+          <p class="desc">${esc(m.overview || "Описание пока отсутствует.")}</p>
+          ${cast ? `<div class="muted" style="margin-top:14px"><b>В ролях:</b> ${esc(cast)}</div>` : ""}
+        </div>
+      </div>
+      <div class="wrap" id="kWatch" hidden>
+        ${isTv ? `<div class="kseasons chips" id="kSeasons">${seasons.map((x, i) => `<button type="button" class="chip ${i === 0 ? "on" : ""}" data-s="${x.season_number}">${esc(x.name || "Сезон " + x.season_number)}</button>`).join("")}</div><div class="eps" id="kEps"></div>` : ""}
+        <div class="player-wrap kino-player" id="kPlayer"></div>
+      </div>
+      ${recs.length ? `<div class="wrap">${section("Похожее", rowOf(recs, type))}</div>` : ""}
+    </div>`;
+
+    const ids = m.external_ids || {};
+    const box = app.querySelector("#kPlayer");
+    let urlCache = null;
+    async function getUrl() {
+      if (urlCache) return urlCache;
+      const w = cfg.WORKER_URL;
+      const q = ids.imdb_id ? "imdb=" + ids.imdb_id : "";
+      if (!q) throw new Error("У этого " + (isTv ? "сериала" : "фильма") + " нет IMDb-номера, плеер не найти.");
+      const r = await fetch(w + (w.includes("?") ? "&" : "?") + q);
+      if (!r.ok) throw new Error("Плеер для этого " + (isTv ? "сериала" : "фильма") + " не нашёлся. Возможно, его нет в источнике.");
+      urlCache = (await r.json()).url;
+      return urlCache;
+    }
+    async function play(season, episode) {
+      box.innerHTML = `<div class="loading">Ищу плеер…</div>`;
+      try {
+        let src = await getUrl();
+        if (isTv) src += (src.includes("?") ? "&" : "?") + "season=" + season + "&episode=" + episode;
+        box.innerHTML = `<iframe src="${esc(src)}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="origin" style="width:100%;aspect-ratio:16/9;border:0;border-radius:14px;background:#000"></iframe>`;
+      } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+    let curS = seasons[0] ? seasons[0].season_number : 1, curE = 1;
+    async function drawEps(sn) {
+      curS = sn;
+      const el = app.querySelector("#kEps");
+      el.innerHTML = `<div class="muted">Загружаю серии…</div>`;
+      try {
+        const sd = await tmdb(`/tv/${id}/season/${sn}?${L}`);
+        const eps = sd.episodes || [];
+        el.innerHTML = eps.map((e) => `<a class="ep ${e.episode_number === curE ? "cur" : ""}" href="#" data-e="${e.episode_number}" title="${esc(e.name || "")}">${e.episode_number}</a>`).join("");
+      } catch (e) { el.innerHTML = ""; }
+    }
+    app.querySelector("#kPlay").onclick = () => {
+      const w = app.querySelector("#kWatch"); w.hidden = false;
+      w.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (isTv) drawEps(curS);
+      play(curS, curE);
+    };
+    if (isTv) {
+      app.querySelector("#kSeasons").onclick = (e) => {
+        const b = e.target.closest("[data-s]"); if (!b) return;
+        app.querySelectorAll("#kSeasons .chip").forEach((c) => c.classList.toggle("on", c === b));
+        curE = 1; drawEps(+b.dataset.s); play(+b.dataset.s, 1);
+      };
+      app.querySelector("#kEps").onclick = (e) => {
+        const a = e.target.closest("[data-e]"); if (!a) return; e.preventDefault();
+        curE = +a.dataset.e;
+        app.querySelectorAll("#kEps .ep").forEach((c) => c.classList.toggle("cur", c === a));
+        play(curS, curE);
+      };
+    }
   }
 
-  window.Kino = { home, soon, ROUTES: ["kino", "movie", "tv"] };
+  window.Kino = { home, detail, ROUTES: ["kino", "movie", "tv"] };
 })();

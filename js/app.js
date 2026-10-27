@@ -1464,7 +1464,7 @@
       // вошёл через Google без кода приглашения: пускаем только на страницу ввода кода
       if (Store.user && Store.user.approved === false) pageInvite();
       else if (parts[0] === "kino") await window.Kino.home(app);
-      else if (parts[0] === "movie" || parts[0] === "tv") window.Kino.soon(app);
+      else if (parts[0] === "movie" || parts[0] === "tv") await window.Kino.detail(app, parts[0], parts[1]);
       else if (!parts.length) await pageHome();
       else if (parts[0] === "search") await pageSearch(params);
       else if (parts[0] === "anime") await pageAnime(parts[1]);
