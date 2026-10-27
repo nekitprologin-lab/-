@@ -8,16 +8,31 @@
   };
   const mem = new Map();
 
+  // запрос к каталогу: с ограничением по времени и одной повторной попыткой (на медленных сетях соединение иногда зависает)
   async function tmdb(path) {
     const w = cfg.WORKER_URL;
     if (!/^https:\/\//.test(w || "")) throw new Error("Шлюз не настроен");
     if (mem.has(path)) return mem.get(path);
-    const r = await fetch(w + (w.includes("?") ? "&" : "?") + "tmdb=" + encodeURIComponent(path));
-    if (r.status === 501) throw new Error("not_configured");
-    if (!r.ok) throw new Error("Не удалось загрузить каталог (" + r.status + ")");
-    const j = await r.json();
-    mem.set(path, j);
-    return j;
+    const url = w + (w.includes("?") ? "&" : "?") + "tmdb=" + encodeURIComponent(path);
+    let lastErr;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), attempt ? 20000 : 12000);
+      try {
+        const r = await fetch(url, { signal: ctrl.signal });
+        if (r.status === 501) throw new Error("not_configured");
+        if (!r.ok) throw new Error("Не удалось загрузить каталог (" + r.status + ")");
+        const j = await r.json();
+        clearTimeout(timer);
+        mem.set(path, j);
+        return j;
+      } catch (e) {
+        clearTimeout(timer);
+        if (e.message === "not_configured") throw e;
+        lastErr = e.name === "AbortError" ? new Error("Каталог не отвечает: соединение с сервером зависло (таймаут)") : e;
+      }
+    }
+    throw lastErr;
   }
 
   const L = "language=ru-RU";
@@ -49,33 +64,48 @@
   const rowOf = (list, def, ranked) => `<div class="row${ranked ? " ranked" : ""}">${list.map((m) => card(m, def)).join("")}</div>`;
 
   async function home(app) {
-    app.innerHTML = `<div class="loading">Загружаю…</div>`;
-    let trend, movies, tv, top, topTv;
-    try {
-      [trend, movies, tv, top, topTv] = await Promise.all([
-        tmdb(`/trending/all/week?${L}`), tmdb(`/movie/now_playing?${L}&region=RU`), tmdb(`/tv/on_the_air?${L}`),
-        tmdb(`/movie/top_rated?${L}`), tmdb(`/tv/top_rated?${L}`),
-      ]);
-    } catch (e) {
-      app.innerHTML = `<div class="wrap"><div class="empty">${e.message === "not_configured" ? "Каталог фильмов ещё подключается. Загляни чуть позже." : esc(e.message)}</div></div>`;
-      return;
-    }
-    const hero = (trend.results || []).filter((m) => m.backdrop_path)[0];
-    let h = "";
-    if (hero) {
-      h += `<div class="kino-hero" style="background-image:url('${img('w1280', hero.backdrop_path)}')"><div class="kino-hero-in wrap">
-        <span class="hero-tag">В тренде</span><h1>${esc(title(hero))}</h1>
-        <p>${esc((hero.overview || "").slice(0, 220))}${(hero.overview || "").length > 220 ? "…" : ""}</p>
-        <a class="btn primary" href="#/${hero.media_type === "tv" ? "tv" : "movie"}/${hero.id}">Открыть</a></div></div>`;
-    }
-    h += `<div class="wrap">`;
-    h += `<div id="kMine"></div><div id="kRecs"></div><div id="kFriends"></div>`;
-    h += section("В тренде", rowOf((trend.results || []).slice(0, 18), "movie", true));
-    h += section("Сейчас в кино", rowOf(movies.results || [], "movie"));
-    h += section("Сериалы в эфире", rowOf(tv.results || [], "tv"));
-    h += section("Лучшие фильмы", rowOf(top.results || [], "movie"));
-    h += section("Лучшие сериалы", rowOf(topTv.results || [], "tv"));
-    app.innerHTML = h + `</div>`;
+    const rows = [
+      ["В тренде", `/trending/all/week?${L}`, "movie", true, 18],
+      ["Сейчас в кино", `/movie/now_playing?${L}&region=RU`, "movie"],
+      ["Сериалы в эфире", `/tv/on_the_air?${L}`, "tv"],
+      ["Лучшие фильмы", `/movie/top_rated?${L}`, "movie"],
+      ["Лучшие сериалы", `/tv/top_rated?${L}`, "tv"],
+    ];
+    const sk = () => `<div class="row">${Array.from({ length: 6 }, () => `<div class="card sk"><div class="poster"></div><div class="name"></div><div class="sub"></div></div>`).join("")}</div>`;
+    app.innerHTML = `<div id="kHero"></div><div class="wrap"><div id="kMine"></div><div id="kRecs"></div><div id="kFriends"></div>${rows.map((r, i) => `<div id="kr${i}">${section(r[0], sk())}</div>`).join("")}</div>`;
+    let failed = 0;
+    const fail = (i, e) => {
+      failed++;
+      const box = app.querySelector("#kr" + i);
+      if (!box) return;
+      box.innerHTML = e.message === "not_configured"
+        ? section(rows[i][0], `<div class="empty">Каталог фильмов ещё подключается. Загляни чуть позже.</div>`)
+        : section(rows[i][0], `<div class="empty">${esc(e.message)}<br><button class="btn" type="button" data-retry="${i}" style="margin-top:12px">Повторить</button></div>`);
+    };
+    const load = async (i) => {
+      const [name, path, def, ranked, n] = rows[i];
+      const box = app.querySelector("#kr" + i);
+      if (box) box.innerHTML = section(name, sk());
+      try {
+        const j = await tmdb(path);
+        if (!app.querySelector("#kr" + i)) return; // ушли с главной
+        const list = (j.results || []).filter((m) => m.poster_path);
+        app.querySelector("#kr" + i).innerHTML = list.length ? section(name, rowOf(n ? list.slice(0, n) : list, def, ranked)) : "";
+        if (i === 0) hero(j);
+      } catch (e) { fail(i, e); }
+    };
+    const hero = (trend) => {
+      const m = (trend.results || []).filter((x) => x.backdrop_path)[0];
+      const el = app.querySelector("#kHero");
+      if (!m || !el) return;
+      el.innerHTML = `<div class="kino-hero" style="background-image:url('${img("w1280", m.backdrop_path)}')"><div class="kino-hero-in wrap">
+        <span class="hero-tag">В тренде</span><h1>${esc(title(m))}</h1>
+        <p>${esc((m.overview || "").slice(0, 220))}${(m.overview || "").length > 220 ? "…" : ""}</p>
+        <a class="btn primary" href="#/${m.media_type === "tv" ? "tv" : "movie"}/${m.id}">Открыть</a></div></div>`;
+    };
+    app.onclick = (e) => { const b = e.target.closest("[data-retry]"); if (b) load(+b.dataset.retry); };
+    // первым грузим «В тренде» (он же даёт обложку), остальные ряды параллельно, но каждый сам по себе
+    rows.forEach((_, i) => load(i));
     personal(app);
   }
 
