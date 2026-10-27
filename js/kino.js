@@ -12,7 +12,7 @@
     const w = cfg.WORKER_URL;
     if (!/^https:\/\//.test(w || "")) throw new Error("Шлюз не настроен");
     if (mem.has(path)) return mem.get(path);
-    const r = await fetch(w + (w.includes("?") ? "&" : "?") + "tmdb=" + encodeURIComponent(path).replace(/%2F/g, "/").replace(/%3F/g, "?").replace(/%3D/g, "=").replace(/%26/g, "&").replace(/%2C/g, ","));
+    const r = await fetch(w + (w.includes("?") ? "&" : "?") + "tmdb=" + encodeURIComponent(path));
     if (r.status === 501) throw new Error("not_configured");
     if (!r.ok) throw new Error("Не удалось загрузить каталог (" + r.status + ")");
     const j = await r.json();
