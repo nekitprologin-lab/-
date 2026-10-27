@@ -840,3 +840,30 @@ html:not([data-device="mobile"]) .nav::before { display: block; height: calc(var
 .chips .chip:hover { transform: translateY(-2px); border-color: rgba(244,239,228,.5); }
 .section-title, .row-head h2 { letter-spacing: .01em; }
 html[data-device="mobile"] .nav { background: linear-gradient(180deg, rgba(0,0,0,.85), rgba(0,0,0,.6)); }
+
+/* ---------- мобильный полиш ---------- */
+html[data-device="mobile"] .nav { padding-top: calc(4px + env(safe-area-inset-top)); padding-bottom: 8px; gap: 4px; background: rgba(3,3,4,.94); box-shadow: none; }
+html[data-device="mobile"] .nav-search input { padding: 8px 16px; font-size: 14px; min-height: 38px; background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.08); }
+html[data-device="mobile"] .nav-links a.on { background: none; position: relative; color: #fff; }
+html[data-device="mobile"] .nav-links a.on::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 5px; height: 2px; border-radius: 2px; background: var(--moon); }
+html[data-device="mobile"] .filters input:focus, html[data-device="mobile"] .nav-search input:focus { box-shadow: none; }
+html[data-device="mobile"] .empty { padding: 28px 18px !important; font-size: 14.5px; }
+html[data-device="mobile"] .page-title, html[data-device="mobile"] .wrap > h1 { font-size: 30px; }
+html[data-device="mobile"] .watch-bar { margin: 10px 14px; }
+html[data-device="mobile"] .watch .notice, html[data-device="mobile"] .watch [class*="note"] { font-size: 12.5px; line-height: 1.5; padding: 10px 14px; }
+html[data-device="mobile"] .watch [class*="note"] p, html[data-device="mobile"] .watch .notice p { font-size: 12.5px; line-height: 1.5; }
+html[data-device="mobile"] .tip { padding: 10px 14px; gap: 10px; }
+html[data-device="mobile"] .tip p { font-size: 12.5px; line-height: 1.5; }
+html[data-device="mobile"] .watch-bar .grow { min-width: 0; flex: 1 1 100%; }
+html[data-device="mobile"] .watch-bar h1, html[data-device="mobile"] .watch-bar .grow { font-size: 18px; }
+
+/* ---------- друзья ---------- */
+.fr-h { font-size: 18px; margin: 30px 0 12px; }
+.fr-add { margin-top: 20px; }
+.fr-add input { width: 100%; max-width: 420px; padding: 12px 18px; border-radius: 999px; background: #000; border: 1px solid var(--line); color: var(--text, #fff); font: inherit; }
+.fr-add input:focus { outline: none; border-color: rgba(244,239,228,.55); }
+.fr-list { display: grid; gap: 8px; margin-top: 10px; max-width: 520px; }
+.fr-row { display: flex; align-items: center; gap: 12px; padding: 8px 10px; background: var(--s1); border: 1px solid var(--line); border-radius: 14px; }
+.fr-av { width: 34px; height: 34px; border-radius: 50%; background: var(--moon); color: var(--moon-ink); display: grid; place-items: center; font-weight: 700; }
+.fr-btns { margin-left: auto; display: flex; gap: 6px; }
+.fr-btns .btn { min-height: 34px; padding: 0 14px; font-size: 13px; }

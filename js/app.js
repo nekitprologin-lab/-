@@ -1148,14 +1148,41 @@
       return;
     }
     loading();
-    const rows = await Store.friends();
-    const body = rows.length
-      ? `<div class="friend-list">${rows.map((r) => `<a class="friend" href="#/anime/${r.anime_id}">
+    const render = async () => {
+      const fs = await Store.friendships();
+      if (!fs.ready) {
+        app.innerHTML = `<div class="wrap"><h1 style="font-size:26px">Друзья</h1><div class="empty" style="margin-top:20px">Друзья ещё настраиваются на сервере. Загляни чуть позже.</div></div>`;
+        return;
+      }
+      const rows = await Store.friends(fs.friends.map((f) => f.id)).catch(() => []);
+      const person = (p, btns) => `<div class="fr-row"><span class="fr-av">${esc((Array.from(p.name)[0] || "?").toUpperCase())}</span><b>${esc(p.name)}</b><span class="fr-btns">${btns}</span></div>`;
+      const incoming = fs.incoming.length ? `<h2 class="fr-h">Заявки в друзья</h2><div class="fr-list">${fs.incoming.map((p) => person(p, `<button class="btn primary" data-acc="${p.fid}">Принять</button><button class="btn" data-del="${p.fid}">Отклонить</button>`)).join("")}</div>` : "";
+      const mine = fs.friends.length ? `<h2 class="fr-h">Мои друзья · ${fs.friends.length}</h2><div class="fr-list">${fs.friends.map((p) => person(p, `<button class="btn" data-del="${p.fid}">Удалить</button>`)).join("")}</div>` : "";
+      const out = fs.outgoing.length ? `<div class="muted" style="margin-top:12px">Ждут ответа: ${fs.outgoing.map((p) => esc(p.name) + ` <a href="#" data-del="${p.fid}">отменить</a>`).join(", ")}</div>` : "";
+      const feed = !fs.friends.length
+        ? `<div class="empty">Добавь друга по имени — и тут появится, что он смотрит.</div>`
+        : rows.length
+          ? `<div class="friend-list">${rows.map((r) => `<a class="friend" href="#/anime/${r.anime_id}">
           ${r.poster ? `<img src="${esc(r.poster)}" alt="" loading="lazy">` : ""}
           <div><b>${esc(r.friend)}</b> ${r.liked ? "поставил(а) ♥" : r.episode ? "смотрит серию " + esc(r.episode) : STATUS[r.status] ? "добавил(а) в «" + STATUS[r.status] + "»" : "открыл(а)"}
           <div>${esc(r.title)}</div></div></a>`).join("")}</div>`
-      : `<div class="empty">Друзья пока ничего не отметили.</div>`;
-    app.innerHTML = `<div class="wrap"><h1 style="font-size:26px">Друзья</h1><div style="margin-top:20px">${body}</div></div>`;
+          : `<div class="empty">Друзья пока ничего не отметили.</div>`;
+      app.innerHTML = `<div class="wrap"><h1 style="font-size:26px">Друзья</h1>
+        <div class="fr-add"><input id="frQ" placeholder="Найти друга по имени" autocomplete="off"><div id="frRes" class="fr-list"></div></div>
+        ${incoming}${mine}${out}
+        <h2 class="fr-h">Активность друзей</h2>${feed}</div>`;
+      const act = async (fn, msg) => { try { await fn(); } catch (e) { toast(e.message || msg); } render(); };
+      app.querySelectorAll("[data-acc]").forEach((b) => (b.onclick = () => act(() => Store.friendAccept(b.dataset.acc))));
+      app.querySelectorAll("[data-del]").forEach((b) => (b.onclick = (e) => { e.preventDefault(); act(() => Store.friendRemove(b.dataset.del)); }));
+      let t; const q = $("#frQ");
+      q.oninput = () => { clearTimeout(t); t = setTimeout(async () => {
+        const known = new Set([...fs.friends, ...fs.incoming, ...fs.outgoing].map((p) => p.id));
+        const res = (await Store.findUsers(q.value)).filter((p) => !known.has(p.id));
+        $("#frRes").innerHTML = res.length ? res.map((p) => person(p, `<button class="btn primary" data-add="${p.id}">Добавить</button>`)).join("") : q.value.trim() ? `<div class="muted">Никого не нашлось</div>` : "";
+        $("#frRes").querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => act(async () => { await Store.friendRequest(b.dataset.add); toast("Заявка отправлена"); })));
+      }, 250); };
+    };
+    await render();
   }
 
   // Вошёл через Google, но ещё не ввёл код приглашения

@@ -242,12 +242,43 @@
     },
 
     // ---------- друзья (только облачный режим) ----------
-    async friends() {
-      if (!cloud || !S.user) return [];
+    // Список связей: {ready, friends:[{id,name,fid}], incoming:[...], outgoing:[...]}
+    async friendships() {
+      if (!cloud || !S.user) return { ready: false, friends: [], incoming: [], outgoing: [] };
+      const { data, error } = await sb.from("friendships").select("id,requester,addressee,status");
+      if (error) return { ready: false, friends: [], incoming: [], outgoing: [] };
+      const me = S.user.id;
+      const ids = [...new Set(data.map((r) => (r.requester === me ? r.addressee : r.requester)))];
+      const names = {};
+      if (ids.length) {
+        const pr = await sb.from("profiles").select("id,name").in("id", ids);
+        (pr.data || []).forEach((p) => (names[p.id] = p.name));
+      }
+      const mk = (r) => { const id = r.requester === me ? r.addressee : r.requester; return { fid: r.id, id, name: names[id] || "Друг" }; };
+      return {
+        ready: true,
+        friends: data.filter((r) => r.status === "accepted").map(mk),
+        incoming: data.filter((r) => r.status === "pending" && r.addressee === me).map(mk),
+        outgoing: data.filter((r) => r.status === "pending" && r.requester === me).map(mk),
+      };
+    },
+    async findUsers(q) {
+      if (!cloud || !S.user || !q.trim()) return [];
+      const { data } = await sb.from("profiles").select("id,name").ilike("name", "%" + q.trim().replace(/[%_]/g, "") + "%").neq("id", S.user.id).limit(8);
+      return data || [];
+    },
+    async friendRequest(uid) {
+      const { error } = await sb.from("friendships").insert({ requester: S.user.id, addressee: uid });
+      if (error) throw new Error(error.code === "23505" ? "Заявка уже отправлена" : error.message);
+    },
+    async friendAccept(fid) { const { error } = await sb.from("friendships").update({ status: "accepted" }).eq("id", fid); if (error) throw new Error(error.message); },
+    async friendRemove(fid) { const { error } = await sb.from("friendships").delete().eq("id", fid); if (error) throw new Error(error.message); },
+    async friends(ids) {
+      if (!cloud || !S.user || !ids || !ids.length) return [];
       const { data, error } = await sb
         .from("library")
         .select("*, profiles(name)")
-        .neq("user_id", S.user.id)
+        .in("user_id", ids)
         .order("updated_at", { ascending: false })
         .limit(80);
       if (error) throw new Error(error.message);
