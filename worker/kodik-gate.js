@@ -85,6 +85,20 @@ export default {
       return resp;
     }
 
+    // Прокси к TMDB (фильмы и сериалы): ?tmdb=/movie/popular?language=ru-RU . Ключ хранится в секрете TMDB_KEY.
+    const tm = new URL(request.url).searchParams.get("tmdb");
+    if (tm) {
+      if (!env.TMDB_KEY) return json({ error: "tmdb not configured" }, 501, headers);
+      if (!/^\/(search\/(multi|movie|tv)|(movie|tv)\/(popular|top_rated|now_playing|on_the_air|airing_today|upcoming|\d{1,9}(\/(season\/\d{1,3}|external_ids|similar|videos|recommendations))?)|trending\/(movie|tv|all)\/(day|week)|discover\/(movie|tv)|genre\/(movie|tv)\/list)(\?[\w=&,%.\-+|:]*)?$/.test(tm))
+        return json({ error: "bad path" }, 400, headers);
+      const sep = tm.includes("?") ? "&" : "?";
+      const r = await fetch("https://api.themoviedb.org/3" + tm + sep + "api_key=" + encodeURIComponent(env.TMDB_KEY), {
+        headers: { Accept: "application/json" },
+        cf: { cacheTtl: 3600, cacheEverything: true },
+      });
+      return new Response(r.body, { status: r.status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=1800", ...headers } });
+    }
+
     // Умный поиск: ?ai=запрос (любой язык) -> параметры для AniList. Работает на Workers AI, ответ кэшируется на неделю.
     const aiq = new URL(request.url).searchParams.get("ai");
     if (aiq) {
