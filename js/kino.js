@@ -2,37 +2,48 @@
 (function () {
   const cfg = window.APP_CONFIG || {};
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const img = (size, path) => {
-    const w = cfg.WORKER_URL || "";
-    return w + (w.includes("?") ? "&" : "?") + "img=" + "/" + size + path;
+  // у шлюза два адреса (свой домен и workers.dev): работает не всегда оба, запоминаем тот, что ответил
+  const bases = () => {
+    const a = [cfg.WORKER_URL, cfg.WORKER_FALLBACK].filter((x) => /^https:\/\//.test(x || ""));
+    let pref = ""; try { pref = localStorage.getItem("tsukimi:wbase") || ""; } catch (e) {}
+    return pref && a.includes(pref) ? [pref, ...a.filter((x) => x !== pref)] : a;
   };
+  const baseNow = () => bases()[0] || "";
+  const img = (size, path) => baseNow() + "?img=/" + size + path;
   const mem = new Map();
 
-  // запрос к каталогу: с ограничением по времени и одной повторной попыткой (на медленных сетях соединение иногда зависает)
-  async function tmdb(path) {
-    const w = cfg.WORKER_URL;
-    if (!/^https:\/\//.test(w || "")) throw new Error("Шлюз не настроен");
-    if (mem.has(path)) return mem.get(path);
-    const url = w + (w.includes("?") ? "&" : "?") + "tmdb=" + encodeURIComponent(path);
+  // запрос к шлюзу: по очереди пробуем оба адреса, у каждого ограничение по времени
+  async function gate(query, timeoutMs) {
+    const list = bases();
+    if (!list.length) throw new Error("Шлюз не настроен");
     let lastErr;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let i = 0; i < list.length; i++) {
+      const base = list[i];
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), attempt ? 20000 : 12000);
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs || 9000);
       try {
-        const r = await fetch(url, { signal: ctrl.signal });
-        if (r.status === 501) throw new Error("not_configured");
-        if (!r.ok) throw new Error("Не удалось загрузить каталог (" + r.status + ")");
-        const j = await r.json();
+        const r = await fetch(base + "?" + query, { signal: ctrl.signal });
         clearTimeout(timer);
-        mem.set(path, j);
-        return j;
+        if (r.status === 501) throw new Error("not_configured");
+        if (r.status >= 500 && i < list.length - 1) { lastErr = new Error("Ошибка сервера (" + r.status + ")"); continue; }
+        try { localStorage.setItem("tsukimi:wbase", base); } catch (e) {}
+        return r;
       } catch (e) {
         clearTimeout(timer);
         if (e.message === "not_configured") throw e;
-        lastErr = e.name === "AbortError" ? new Error("Каталог не отвечает: соединение с сервером зависло (таймаут)") : e;
+        lastErr = e.name === "AbortError" ? new Error("Каталог не отвечает: соединение с сервером зависло (таймаут)") : new Error("Нет связи с сервером каталога (" + (e.message || "ошибка сети") + ")");
       }
     }
     throw lastErr;
+  }
+
+  async function tmdb(path) {
+    if (mem.has(path)) return mem.get(path);
+    const r = await gate("tmdb=" + encodeURIComponent(path), 9000);
+    if (!r.ok) throw new Error("Не удалось загрузить каталог (" + r.status + ")");
+    const j = await r.json();
+    mem.set(path, j);
+    return j;
   }
 
   const L = "language=ru-RU";
@@ -233,10 +244,9 @@
     let urlCache = null;
     async function getUrl() {
       if (urlCache) return urlCache;
-      const w = cfg.WORKER_URL;
       const q = ids.imdb_id ? "imdb=" + ids.imdb_id : "";
       if (!q) throw new Error("Для этого " + (isTv ? "сериала" : "фильма") + " пока нет данных для поиска плеера (слишком свежий релиз).");
-      const r = await fetch(w + (w.includes("?") ? "&" : "?") + q);
+      const r = await gate(q, 15000);
       if (!r.ok) throw new Error("Плеер для этого " + (isTv ? "сериала" : "фильма") + " не нашёлся. Возможно, его нет в источнике.");
       urlCache = (await r.json()).url;
       return urlCache;
