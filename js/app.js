@@ -1408,6 +1408,8 @@
 
   const setTitle = (t) => { document.title = t ? t + " · " + cfg.SITE_NAME : cfg.SITE_NAME; };
   async function route() {
+    // на главной показываем чистый адрес без «#/»
+    if (location.hash === "#/") { try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {} }
     const hash = location.hash.replace(/^#/, "") || "/";
     const [path, query] = hash.split("?");
     const parts = path.split("/").filter(Boolean);
