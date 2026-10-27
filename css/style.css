@@ -584,3 +584,14 @@ html[data-device="mobile"] .usermenu .menu { right: 0; }
 .auto-skip { font-size: 13.5px; padding: 9px 16px; color: var(--muted); }
 .auto-skip.on { color: #000; background: var(--moon); border-color: var(--moon); }
 html[data-device="mobile"] .skip-btn { right: 10px; bottom: 62px; }
+
+/* ---------- подсветка страницы просмотра ---------- */
+.watch-bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: 0; transition: opacity 1.2s var(--ease); overflow: hidden; }
+.watch-bg.on { opacity: 1; }
+.watch-bg i { position: absolute; inset: -30px; background: center 25% / cover no-repeat; filter: blur(9px) saturate(1.25) brightness(.85); transform: scale(1.08); animation: bgdrift 40s ease-in-out infinite alternate; }
+.watch-bg::after { content: ""; position: absolute; inset: 0; background:
+  radial-gradient(ellipse 52% 62% at 50% 42%, rgba(0,0,0,.82), rgba(0,0,0,.35) 62%, transparent 100%),
+  linear-gradient(180deg, rgba(0,0,0,.6) 0, transparent 20%, transparent 50%, #000 98%); }
+@keyframes bgdrift { to { transform: scale(1.18) translate3d(-1.5%, 1%, 0); } }
+@media (prefers-reduced-motion: reduce) { .watch-bg i { animation: none; } }
+.watch .player { box-shadow: 0 0 0 1px rgba(255,255,255,.1), 0 40px 120px rgba(0,0,0,.85); }
