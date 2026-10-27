@@ -124,13 +124,31 @@
       urlCache = (await r.json()).url;
       return urlCache;
     }
+    // запасной источник: агрегатор плееров Kinobox (ищет по IMDb), когда в Kodik фильма нет
+    function loadScript(src) {
+      return new Promise((res, rej) => {
+        if (window.Kinobox) return res();
+        const sc = document.createElement("script");
+        sc.src = src; sc.onload = res; sc.onerror = () => rej(new Error("script"));
+        document.head.appendChild(sc);
+      });
+    }
+    async function fallback() {
+      if (!ids.imdb_id) throw new Error("no imdb");
+      await loadScript("https://kinobox.tv/kinobox.min.js");
+      box.innerHTML = `<div class="kb" id="kbBox" style="min-height:420px"></div><div class="muted" style="margin-top:8px;font-size:13px">Источник: агрегатор плееров. Если плеер не запускается, выбери другой источник в списке над видео.</div>`;
+      new window.Kinobox("#kbBox", { search: { imdb: ids.imdb_id }, menu: { enabled: true } }).init();
+    }
     async function play(season, episode) {
       box.innerHTML = `<div class="loading">Ищу плеер…</div>`;
       try {
         let src = await getUrl();
         if (isTv) src += (src.includes("?") ? "&" : "?") + "season=" + season + "&episode=" + episode;
         box.innerHTML = `<iframe src="${esc(src)}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="origin" style="width:100%;aspect-ratio:16/9;border:0;border-radius:14px;background:#000"></iframe>`;
-      } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+      } catch (e) {
+        try { await fallback(); }
+        catch (e2) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+      }
     }
     let curS = seasons[0] ? seasons[0].season_number : 1, curE = 1;
     async function drawEps(sn) {
