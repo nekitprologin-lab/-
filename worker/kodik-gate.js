@@ -85,6 +85,14 @@ export default {
       return resp;
     }
 
+    // Картинки TMDB через Worker (image.tmdb.org недоступен без VPN в РФ): ?img=/w342/abc.jpg
+    const im = new URL(request.url).searchParams.get("img");
+    if (im) {
+      if (!/^\/(w92|w154|w185|w300|w342|w500|w780|w1280|original)\/[\w\-]{5,60}\.(jpg|png|webp)$/.test(im)) return json({ error: "bad path" }, 400, headers);
+      const r = await fetch("https://image.tmdb.org/t/p" + im, { cf: { cacheTtl: 2592000, cacheEverything: true } });
+      return new Response(r.body, { status: r.status, headers: { "Content-Type": r.headers.get("Content-Type") || "image/jpeg", "Cache-Control": "public, max-age=2592000", "Access-Control-Allow-Origin": "*" } });
+    }
+
     // Прокси к TMDB (фильмы и сериалы): ?tmdb=/movie/popular?language=ru-RU . Ключ хранится в секрете TMDB_KEY.
     const tm = new URL(request.url).searchParams.get("tmdb");
     if (tm) {

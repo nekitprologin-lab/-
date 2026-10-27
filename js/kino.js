@@ -2,7 +2,10 @@
 (function () {
   const cfg = window.APP_CONFIG || {};
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const IMG = "https://image.tmdb.org/t/p/";
+  const img = (size, path) => {
+    const w = cfg.WORKER_URL || "";
+    return w + (w.includes("?") ? "&" : "?") + "img=" + "/" + size + path;
+  };
   const mem = new Map();
 
   async function tmdb(path) {
@@ -27,7 +30,7 @@
     if (k !== "movie" && k !== "tv") return "";
     const sub = [year(m), k === "tv" ? "Сериал" : "Фильм"].filter(Boolean).join(", ");
     return `<a class="card" href="#/${k}/${m.id}">
-      <div class="poster">${m.poster_path ? `<img src="${IMG}w342${m.poster_path}" alt="" loading="lazy">` : ""}
+      <div class="poster">${m.poster_path ? `<img src="${img("w342", m.poster_path)}" alt="" loading="lazy">` : ""}
         ${m.vote_average ? `<span class="score">${m.vote_average.toFixed(1)}</span>` : ""}</div>
       <div class="name">${esc(title(m))}</div><div class="sub">${esc(sub)}</div></a>`;
   }
@@ -49,7 +52,7 @@
     const hero = (trend.results || []).filter((m) => m.backdrop_path)[0];
     let h = "";
     if (hero) {
-      h += `<div class="kino-hero" style="background-image:url('${IMG}w1280${hero.backdrop_path}')"><div class="kino-hero-in wrap">
+      h += `<div class="kino-hero" style="background-image:url('${img('w1280', hero.backdrop_path)}')"><div class="kino-hero-in wrap">
         <span class="hero-tag">В тренде</span><h1>${esc(title(hero))}</h1>
         <p>${esc((hero.overview || "").slice(0, 220))}${(hero.overview || "").length > 220 ? "…" : ""}</p>
         <a class="btn primary" href="#/${hero.media_type === "tv" ? "tv" : "movie"}/${hero.id}">Открыть</a></div></div>`;
