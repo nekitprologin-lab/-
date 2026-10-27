@@ -612,6 +612,7 @@
         <a class="btn" href="#/anime/${m.id}">← ${esc(Api.title(m))}</a>
         <div class="grow"><h1 id="epTitle">Серия</h1></div>
         <select class="select" id="qualitySel" aria-label="Качество" hidden></select>
+        <button type="button" class="btn auto-skip" id="autoSkipBtn" title="Опенинг и эндинг пропускаются сами, в том числе на весь экран"></button>
       </div>
       <div class="srcbar" id="srcBar" role="tablist" aria-label="Источник видео" hidden></div>
       <div class="tip" id="adTip" role="note" hidden>
@@ -619,7 +620,10 @@
         <p>В плеере Kodik есть встроенная видеореклама. Чтобы смотреть без неё, рекомендуем использовать <a href="https://ublockorigin.com/" target="_blank" rel="noopener noreferrer">uBlock Origin</a> или браузер со встроенным блоком (<a href="https://brave.com/" target="_blank" rel="noopener noreferrer">Brave</a> / <a href="https://adguard.com/" target="_blank" rel="noopener noreferrer">AdGuard</a>).</p>
         <button type="button" class="tip-x" id="adTipX" aria-label="Закрыть подсказку">×</button>
       </div>
-      <div class="player" id="player"><div class="player-empty"><div>Ищу «${esc(Api.title(m))}» в каталоге AniLibria…</div></div></div>
+      <div class="player-wrap" id="playerWrap">
+        <div class="player" id="player"><div class="player-empty"><div>Ищу «${esc(Api.title(m))}» в каталоге AniLibria…</div></div></div>
+        <button type="button" class="skip-btn" id="skipBtn" hidden></button>
+      </div>
       <div class="watch-bar" id="navBar" hidden>
         <button class="btn" id="prevBtn" type="button">← Назад</button>
         <button class="btn primary" id="nextBtn" type="button">Следующая серия</button>
@@ -628,6 +632,58 @@
     </div>`;
 
     const box = $("#player");
+
+    // ---------- пропуск опенинга и эндинга ----------
+    // Тайминги: AniLibria (точные, у части релизов) или AniSkip (по номеру MyAnimeList и серии, сверяется длина серии).
+    // Кнопка появляется над плеером, пока идёт заставка; «Авто-пропуск» делает это сам (работает и на весь экран, где кнопки не видно).
+    const skipBtn = $("#skipBtn"), autoBtn = $("#autoSkipBtn");
+    const autoOn = () => store.get("tsukimi:autoskip") === "1";
+    const drawAuto = () => { autoBtn.textContent = "Авто-пропуск заставок: " + (autoOn() ? "вкл" : "выкл"); autoBtn.classList.toggle("on", autoOn()); };
+    const sk = { known: { op: null, ed: null }, raw: null, set: null, done: { op: false, ed: false }, seek: null, next: null, kind: null, iv: null, toEnd: false, t: 0, dur: 0 };
+    function skipReset(known, rawPromise, seek, next) {
+      sk.known = known || { op: null, ed: null }; sk.raw = null; sk.set = null; sk.done = { op: false, ed: false }; sk.kind = null; sk.t = 0;
+      sk.seek = seek || null; sk.next = next || null; sk.ep = null;
+      skipBtn.hidden = true;
+      if (rawPromise) { const mine = rawPromise; sk.pending = mine; mine.then((raw) => { if (sk.pending === mine) { sk.raw = raw; sk.set = null; } }); }
+    }
+    function skipTick(t, dur) {
+      sk.t = t; if (dur && isFinite(dur)) sk.dur = dur;
+      if (!sk.set && (sk.known.op || sk.known.ed || (sk.raw && sk.dur))) {
+        // известные тайминги берём как есть, недостающие добираем из AniSkip по длине серии
+        sk.set = {
+          op: sk.known.op ? { ...sk.known.op, exact: true } : sk.raw && sk.dur ? Api.pickSkip(sk.raw.op, sk.dur) : null,
+          ed: sk.known.ed ? { ...sk.known.ed, exact: true } : sk.raw && sk.dur ? Api.pickSkip(sk.raw.ed, sk.dur) : null,
+        };
+        if (!(sk.known.op && sk.known.ed) && !(sk.raw && sk.dur)) sk.set = { ...sk.set, partial: true }; // AniSkip ещё не пришёл: пересоберём позже
+      }
+      if (sk.set && sk.set.partial && sk.raw && sk.dur) sk.set = null; // пришли данные AniSkip — соберём заново на следующем тике
+      const set = sk.set;
+      if (!set) { if (!skipBtn.hidden) skipBtn.hidden = true; sk.kind = null; return; }
+      let kind = null, iv = null;
+      if (set.op && t >= set.op.s - 1 && t < set.op.e - 1.5) { kind = "op"; iv = set.op; }
+      else if (set.ed && t >= set.ed.s - 1 && t < set.ed.e - 1.5) { kind = "ed"; iv = set.ed; }
+      if (!kind) { if (!skipBtn.hidden) skipBtn.hidden = true; sk.kind = null; return; }
+      sk.kind = kind; sk.iv = iv;
+      sk.toEnd = kind === "ed" && (!sk.dur || iv.e >= sk.dur - 8);
+      const label = kind === "op" ? "Пропустить опенинг" : sk.toEnd && sk.next ? "Следующая серия" : "Пропустить эндинг";
+      if (skipBtn.textContent !== label) skipBtn.textContent = label;
+      skipBtn.hidden = false;
+      if (autoOn() && !sk.done[kind] && iv.exact) { sk.done[kind] = true; skipAct(true); }
+    }
+    function skipAct(auto) {
+      if (!sk.kind || !sk.iv) return;
+      const kind = sk.kind;
+      if (kind === "ed" && sk.toEnd && sk.next) { skipBtn.hidden = true; sk.next(); if (auto) toast("Эндинг пропущен"); return; }
+      const target = kind === "ed" && sk.dur ? Math.min(sk.iv.e, sk.dur - 1) : sk.iv.e;
+      if (sk.seek) sk.seek(target);
+      skipBtn.hidden = true;
+      sk.done[kind] = true;
+      if (auto) toast(kind === "op" ? "Опенинг пропущен" : "Эндинг пропущен");
+    }
+    skipBtn.onclick = () => skipAct(false);
+    autoBtn.onclick = () => { store.set("tsukimi:autoskip", autoOn() ? "0" : "1"); drawAuto(); toast(autoOn() ? "Опенинг и эндинг будут пропускаться сами" : "Автопропуск выключен"); skipTick(sk.t, sk.dur); };
+    drawAuto();
+
     const note = (html) => { if (box.isConnected) box.innerHTML = `<div class="player-empty"><div>${html}</div></div>`; };
     const overlay = (text) => { if (box.isConnected) box.insertAdjacentHTML("beforeend", `<div class="player-note">${esc(text)}</div>`); };
 
@@ -738,7 +794,7 @@
         clearTimeout(t);
       }
     }
-    let kodikFrame = null, kodikEp = null, kodikSave = 0;
+    let kodikFrame = null, kodikEp = null, kodikSave = 0, kodikStartEp = null;
     function resumeNote(text, onRestart) {
       const old = $("#resumeBar"); if (old) old.remove();
       const bar = document.createElement("div");
@@ -752,8 +808,26 @@
       if (tab !== 2 || !kodikFrame || ev.source !== kodikFrame.contentWindow) return;
       const d = typeof ev.data === "string" ? (() => { try { return JSON.parse(ev.data); } catch (e) { return null; } })() : ev.data;
       if (!d || !d.key) return;
+      // заставки: серия берётся из событий Kodik, а пока их нет — та, с которой мы открыли плеер (обычно первая)
+      const kodikSkipFor = (ep) => {
+        if (String(sk.ep) === String(ep)) return;
+        skipReset(null, Api.skipTimes(m.idMal, ep), (t) => { if (kodikFrame && kodikFrame.contentWindow) kodikFrame.contentWindow.postMessage({ key: "kodik_player_api", value: { method: "seek", seconds: t } }, "*"); }, null);
+        sk.ep = String(ep);
+      };
+      if (d.key === "kodik_player_duration_update" && Number(d.value) > 0) {
+        sk.dur = Number(d.value);
+        kodikSkipFor(kodikEp || kodikStartEp || 1);
+      } else if (d.key === "kodik_player_time_update") {
+        kodikSkipFor(kodikEp || kodikStartEp || 1);
+        skipTick(Number(d.value) || 0, sk.dur);
+      }
       if (d.key === "kodik_player_current_episode" && d.value) {
+        const prevEp = kodikEp;
         kodikEp = d.value.episode || kodikEp;
+        if (String(kodikEp) !== String(prevEp)) {
+          if (String(sk.ep) !== String(kodikEp)) sk.dur = 0;
+          kodikSkipFor(kodikEp);
+        }
         if (Store.user && kodikEp) {
           const lib = Store.get(m.id) || {};
           const patch = { episode: Number(kodikEp) };
@@ -780,6 +854,7 @@
         // Kodik сам сообщает странице минуту и серию через postMessage — по ним запоминаем место и продолжаем
         const saved = Pos.get(m.id);
         let src = r.url;
+        kodikStartEp = saved && saved.src === "kodik" && saved.ep ? saved.ep : null;
         if (saved && saved.src === "kodik" && saved.t > 10) {
           src += (src.includes("?") ? "&" : "?") + (saved.ep ? "episode=" + encodeURIComponent(saved.ep) + "&" : "") + "start_from=" + saved.t;
           resumeNote("Продолжаем " + (saved.ep ? "серию " + esc(saved.ep) + " " : "") + "с " + mmss(saved.t), () => { Pos.clear(m.id); drawGate(); });
@@ -804,6 +879,7 @@
     function setTab(n) {
       tab = n;
       stopPlayer();
+      skipReset(null, null, null, null);
       drawTabs();
       $("#qualitySel").hidden = true;
       $("#navBar").hidden = true;
@@ -873,6 +949,8 @@
     });
     video.addEventListener("pause", () => { if (video.currentTime > 5 && !(video.duration && video.duration - video.currentTime < 30)) Pos.set(m.id, eps[idx].ordinal, video.currentTime, "native", m); });
     video.addEventListener("ended", () => Pos.clear(m.id));
+    video.addEventListener("timeupdate", () => skipTick(video.currentTime, video.duration));
+    video.addEventListener("loadedmetadata", () => skipTick(video.currentTime || 0, video.duration));
     function resumeBar(text, onRestart) {
       let bar = $("#resumeBar");
       if (!bar) { bar = document.createElement("div"); bar.id = "resumeBar"; bar.className = "resume"; box.parentNode.insertBefore(bar, box); }
@@ -953,6 +1031,9 @@
 
       // адрес в строке меняется без перезагрузки страницы
       history.replaceState(null, "", "#/watch/" + m.id + "/" + e.ordinal);
+      // заставки: свои тайминги серии от AniLibria, недостающие — из AniSkip
+      sk.dur = Number(e.duration) || 0;
+      skipReset({ op: e.op || null, ed: e.ed || null }, e.op && e.ed ? null : Api.skipTimes(m.idMal, e.ordinal), (t) => { video.currentTime = t; }, last ? null : () => nextBtn.click());
       attach(e.hls[q], startAt, autoplay);
 
       // история: последняя открытая серия; статус «смотрю», если ещё не задан

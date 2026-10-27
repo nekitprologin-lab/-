@@ -526,6 +526,38 @@
       this._sg.set(k, items);
       return items;
     },
+    // Тайминги опенинга/эндинга от AniSkip (по номеру MyAnimeList и серии): [{s, e, len}] для op и ed. Запоминаются: найденное на 2 недели, «нет данных» на сутки.
+    async skipTimes(mal, ep) {
+      const n = Number(ep);
+      if (!mal || !Number.isInteger(n) || n < 1) return { op: [], ed: [] };
+      const key = "tsukimi:skip:" + mal + ":" + n;
+      try {
+        const c = JSON.parse(localStorage.getItem(key) || "null");
+        if (c && Date.now() - c.t < (c.d.op.length || c.d.ed.length ? 14 : 1) * 864e5) return c.d;
+      } catch (e) {}
+      const out = { op: [], ed: [] };
+      try {
+        const res = await fetch("https://api.aniskip.com/v2/skip-times/" + mal + "/" + n + "?types=op&types=ed&episodeLength=0", { signal: AbortSignal.timeout ? AbortSignal.timeout(4500) : undefined });
+        if (res.ok || res.status === 404) {
+          const j = res.ok ? await res.json() : {};
+          (j.results || []).forEach((r) => {
+            const t = r.skipType === "op" || r.skipType === "mixed-op" ? "op" : r.skipType === "ed" || r.skipType === "mixed-ed" ? "ed" : null;
+            if (t && r.interval && r.interval.endTime > r.interval.startTime) out[t].push({ s: r.interval.startTime, e: r.interval.endTime, len: r.episodeLength || 0 });
+          });
+          try { localStorage.setItem(key, JSON.stringify({ t: Date.now(), d: out })); } catch (e) {}
+        }
+      } catch (e) { /* сервис недоступен — просто без пропуска */ }
+      return out;
+    },
+    // из нескольких вариантов выбираем тот, чья длина серии ближе всего к фактической; если длины не сходятся — вариант не берём
+    pickSkip(list, dur, tol = 20) {
+      if (!list || !list.length) return null;
+      if (!dur) return null;
+      const best = list.filter((x) => x.len).sort((a, b) => Math.abs(a.len - dur) - Math.abs(b.len - dur))[0];
+      if (best && Math.abs(best.len - dur) <= tol) return { s: best.s, e: best.e, exact: Math.abs(best.len - dur) <= 8 };
+      return null;
+    },
+
     // подборка по жанрам/тегам с отсевом слабых оценок и рекомендации AniList к одному тайтлу (для личных рекомендаций)
     pick: ({ g, t, sc }) => gql(AI_Q, { g: g && g.length ? g : undefined, t: t && t.length ? t : undefined, sc: sc || undefined }).then((d) => d.Page.media).catch(() => []),
     recsById: (id) =>
@@ -641,12 +673,16 @@
 
   function buildOut(rel) {
     if (rel.is_blocked_by_geo || rel.is_blocked_by_copyrights) return { blocked: true };
+    const iv = (x) => (x && Number.isFinite(x.start) && Number.isFinite(x.stop) && x.stop > x.start ? { s: x.start, e: x.stop } : null);
     const episodes = (rel.episodes || [])
       .map((e) => ({
         ordinal: e.ordinal,
         name: e.name,
         duration: e.duration,
         hls: { 1080: e.hls_1080, 720: e.hls_720, 480: e.hls_480 },
+        // тайминги заставок, которые AniLibria знает для этой серии (не у всех релизов заполнены)
+        op: iv(e.opening),
+        ed: iv(e.ending),
       }))
       .filter((e) => e.hls[1080] || e.hls[720] || e.hls[480])
       .sort((a, b) => a.ordinal - b.ordinal);
