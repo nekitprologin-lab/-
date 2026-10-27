@@ -1,0 +1,90 @@
+/* Tsukimi / Киноман — «дорогой» слой оформления.
+   Подключён отдельным файлом после style.css. Откат: убрать <link> на premium.css в index.html. */
+
+:root {
+  --edge: rgba(255, 255, 255, .08);
+  --edge-2: rgba(255, 255, 255, .14);
+  --accent: var(--moon);
+  --lift: 0 24px 50px -18px rgba(0, 0, 0, .95);
+}
+html[data-mode="kino"] { --accent: #ffc61a; }
+
+/* ---------- заголовки разделов: название + тонкая линия, без «палочки» ---------- */
+.section { margin-top: 56px; }
+.section-head { align-items: center; margin-bottom: 20px; }
+.section-head h2 {
+  display: flex; align-items: center; gap: 20px; flex: 1; margin: 0;
+  font-family: var(--font-title, var(--font-head)); font-weight: 600; font-size: clamp(22px, 2.2vw, 30px); letter-spacing: .01em; line-height: 1.1;
+}
+.section-head h2::before { display: none !important; }
+.section-head h2::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--edge-2), transparent 85%); }
+html[data-mode="kino"] .section-head h2::after { background: linear-gradient(90deg, rgba(255, 198, 26, .55), transparent 80%); }
+
+/* ---------- герой аниме: мягкий переход в фон и лучшая читаемость ---------- */
+.hero::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 160px; z-index: 3; pointer-events: none; background: linear-gradient(to top, var(--bg), transparent); }
+.hero-dots { z-index: 5; }
+.hero h1 { text-shadow: 0 6px 40px rgba(0, 0, 0, .55); }
+.hero-tag { background: rgba(8, 8, 10, .7); border-color: var(--edge-2); backdrop-filter: none; }
+.hero .meta, .kino-hero .meta { margin-top: 20px; }
+
+/* ---------- кнопки: единая высота и вес, мягкое свечение у главной ---------- */
+.btn { min-height: 46px; font-weight: 600; letter-spacing: .01em; border-color: var(--edge-2); }
+.btn.primary { box-shadow: 0 10px 34px -12px color-mix(in srgb, var(--accent) 70%, transparent); }
+.btn.primary:hover { box-shadow: 0 14px 40px -10px color-mix(in srgb, var(--accent) 85%, transparent); }
+
+/* ---------- карточки ---------- */
+.card .poster { border-radius: 12px; box-shadow: 0 0 0 1px var(--edge), 0 16px 30px -16px rgba(0, 0, 0, .9); transition: box-shadow .45s var(--ease); }
+.card .score { background: rgba(6, 6, 8, .8); border: 1px solid var(--edge-2); border-radius: 8px; font-weight: 600; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.card .name { font-weight: 500; letter-spacing: .01em; transition: color .25s; }
+.card .sub { color: #77746d; }
+html:not([data-device="mobile"]) .card:hover .poster {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c, var(--accent)) 60%, transparent), 0 30px 60px -18px color-mix(in srgb, var(--c, var(--accent)) 55%, #000);
+}
+html:not([data-device="mobile"]) .card:hover .name { color: #fff; }
+
+/* ---------- страница аниме и фильма ---------- */
+.detail-banner::after { background: linear-gradient(to top, var(--bg) 2%, rgba(3, 3, 4, .6) 46%, rgba(3, 3, 4, .22)), linear-gradient(to right, rgba(3, 3, 4, .55), transparent 55%); }
+.detail-body .cover { border-radius: 16px; box-shadow: 0 0 0 1px var(--edge-2), 0 40px 80px -20px rgba(0, 0, 0, .95), 0 0 100px -30px color-mix(in srgb, var(--accent) 35%, transparent); }
+.detail h1, .detail-body h1 { font-size: clamp(36px, 4.6vw, 62px); line-height: 1.03; letter-spacing: -.005em; text-wrap: balance; }
+.detail .alt { color: #85827b; margin-top: 8px; }
+.meta { gap: 6px 0; }
+.meta > span { display: inline-flex; align-items: center; }
+.meta > span + span::before { content: ""; width: 3px; height: 3px; margin: 0 14px; border-radius: 50%; background: currentColor; opacity: .45; }
+.detail .meta > span:first-child b, .kino-hero .meta b { font-size: 19px; color: var(--accent); }
+.chips .chip { min-height: 34px; display: inline-flex; align-items: center; background: rgba(255, 255, 255, .03); border-color: var(--edge-2); }
+.chips .chip:hover { background: rgba(255, 255, 255, .08); }
+.desc { color: #b6b3ab; line-height: 1.75; }
+
+/* ---------- страница просмотра: плеер как «сцена» ---------- */
+.player-wrap { border-radius: 18px; overflow: hidden; box-shadow: 0 0 0 1px var(--edge), 0 60px 140px -50px rgba(255, 255, 255, .08), 0 30px 80px rgba(0, 0, 0, .75); }
+html[data-device="mobile"] .player-wrap { border-radius: 0; box-shadow: none; }
+.watch-bar .grow { font-family: var(--font-title, var(--font-head)); font-weight: 600; font-size: 22px; letter-spacing: .01em; }
+.srcbar { border-color: var(--edge); background: rgba(255, 255, 255, .03); }
+.tip { background: transparent; border-color: var(--edge); font-size: 13.5px; }
+.ep { border-radius: 10px; }
+
+/* ---------- шапка и переключатель режимов ---------- */
+.modesw { background: rgba(255, 255, 255, .05); border-color: var(--edge); }
+.modesw a.on { box-shadow: 0 4px 18px -6px color-mix(in srgb, var(--accent) 80%, transparent); }
+.nav-search input { border-color: var(--edge); }
+.nav-search input:focus { border-color: var(--edge-2); }
+
+/* ---------- формы и панели ---------- */
+.auth, .filters, .lib-stats { border-color: var(--edge); }
+input, select, textarea { transition: border-color .25s, box-shadow .25s; }
+.fr-row, .friend { border-color: var(--edge); }
+
+/* ---------- Киноман: кинематографичнее ---------- */
+.kino-hero { min-height: 70vh; }
+.kino-hero::after { background: linear-gradient(0deg, var(--bg) 3%, rgba(5, 5, 3, .5) 42%, rgba(5, 5, 3, .2)), linear-gradient(90deg, rgba(5, 5, 3, .7), transparent 60%); }
+.kino-hero h1 { font-size: clamp(38px, 5.6vw, 76px); letter-spacing: -.005em; text-shadow: 0 8px 50px rgba(0, 0, 0, .6); }
+.kino-hero .hero-tag { color: var(--accent); border-color: rgba(255, 198, 26, .35); }
+html[data-mode="kino"] .detail-banner::after { background: linear-gradient(to top, var(--bg) 2%, rgba(5, 5, 3, .6) 46%, rgba(5, 5, 3, .22)), linear-gradient(to right, rgba(5, 5, 3, .55), transparent 55%); }
+
+/* ---------- плавность ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+.detail .meta > span:first-child b, .kino-hero .meta b, .hero .meta b { margin-right: 6px; }
+.empty { border: 1px solid var(--edge); background: rgba(255, 255, 255, .02); border-radius: 16px; }
+html[data-device="mobile"] .empty { padding: 26px 18px !important; }
