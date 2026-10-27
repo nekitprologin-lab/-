@@ -100,3 +100,9 @@ html[data-device="mobile"] .filters { margin: 18px 0 12px; }
 html[data-device="mobile"] .filters .select { flex: 1 1 0; min-width: 0; padding: 11px 26px 11px 14px; font-size: 14px; background-position: right 10px center; text-overflow: ellipsis; }
 html[data-device="mobile"] .filters input[type=number] { flex: 0 0 62px; width: 62px; padding: 11px 6px; text-align: center; font-size: 14.5px; }
 html[data-device="mobile"] .filters .btn { flex: none; padding: 11px 12px; min-height: 0; font-size: 14px; }
+
+/* Киноман: кнопки действий и шапка на телефоне */
+.actions .btn { white-space: nowrap; }
+html[data-device="mobile"] .nav-links a, html[data-device="mobile"] .nav-links button { white-space: nowrap; padding-left: 9px; padding-right: 9px; }
+html[data-device="mobile"] .nav-links { flex-wrap: nowrap; }
+html[data-device="mobile"] .actions #kPlay { flex-basis: 100%; }

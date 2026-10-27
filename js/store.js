@@ -13,14 +13,24 @@
   const listeners = [];
   const emit = () => listeners.forEach((fn) => fn());
 
+  // Фильмы и сериалы лежат в тех же таблицах, что и аниме. Чтобы id не пересекались: фильм = 10 000 000 + id TMDB, сериал = 20 000 000 + id TMDB.
+  const KOFF = 10000000;
+  const isK = (id) => Number(id) >= KOFF;
+
   const S = {
     mode: cloud ? "cloud" : "local",
+    KOFF,
+    isKino: isK,
+    kid: (type, id) => (type === "tv" ? 2 * KOFF : KOFF) + Number(id),
+    kparse: (aid) => { aid = Number(aid); return aid >= 2 * KOFF ? { type: "tv", id: aid - 2 * KOFF } : { type: "movie", id: aid - KOFF }; },
     user: null, // { id, name }
     onChange: (fn) => listeners.push(fn),
 
-    all: () => [...rows.values()],
+    all: () => [...rows.values()].filter((r) => !isK(r.anime_id)), // только аниме
+    kinoAll: () => [...rows.values()].filter((r) => isK(r.anime_id)),
     get: (id) => rows.get(Number(id)) || null,
-    history: () => hist,
+    history: () => hist.filter((h) => !isK(h.anime_id)),
+    kinoHistory: () => hist.filter((h) => isK(h.anime_id)),
 
     // ---------- вход ----------
     async init() {
@@ -173,9 +183,54 @@
         const { error } = await sb.from("library").upsert({ ...row, user_id: S.user.id }, { onConflict: "user_id,anime_id" });
         if (error) throw new Error("Не удалось сохранить: " + error.message);
       } else {
-        lsSet("tsukimi:lib:" + S.user.name, JSON.stringify(S.all()));
+        lsSet("tsukimi:lib:" + S.user.name, JSON.stringify([...rows.values()]));
       }
       return row;
+    },
+
+    // Фильм или сериал: item = { type, id, title, poster_path, genres:[имена], score(0..10) }; patch = { liked, status }
+    async saveKino(item, patch) {
+      if (!S.user) throw new Error("Нужно войти.");
+      const aid = S.kid(item.type, item.id);
+      const prev = rows.get(aid) || {};
+      const row = {
+        ...prev,
+        anime_id: aid,
+        mal_id: null,
+        title: item.title || prev.title || "",
+        poster: item.poster_path ? "tmdb:" + item.poster_path : prev.poster || null,
+        genres: item.genres || prev.genres || [],
+        score: item.score ? Math.round(item.score * 10) : prev.score || null,
+        episodes: null,
+        status: prev.status || null,
+        liked: !!prev.liked,
+        episode: prev.episode || null,
+        ...patch,
+        updated_at: new Date().toISOString(),
+      };
+      rows.set(aid, row);
+      emit();
+      if (cloud) {
+        const { error } = await sb.from("library").upsert({ ...row, user_id: S.user.id }, { onConflict: "user_id,anime_id" });
+        if (error) throw new Error("Не удалось сохранить: " + error.message);
+      } else {
+        lsSet("tsukimi:lib:" + S.user.name, JSON.stringify([...rows.values()]));
+      }
+      return row;
+    },
+    // История фильмов: фильм = «серия» 1, сериал = сезон * 1000 + серия
+    async addHistoryKino(item, season, episode) {
+      if (!S.user || !S.user.approved) return;
+      const aid = S.kid(item.type, item.id);
+      const ep = item.type === "tv" ? Number(season) * 1000 + Number(episode) : 1;
+      if (!Number.isInteger(ep)) return;
+      const row = { anime_id: aid, episode: ep, title: item.title, poster: item.poster_path ? "tmdb:" + item.poster_path : null, watched_at: new Date().toISOString() };
+      hist = [row, ...hist.filter((h) => !(Number(h.anime_id) === aid && Number(h.episode) === ep))].slice(0, 500);
+      emit();
+      if (cloud) {
+        const { error } = await sb.from("history").upsert({ ...row, user_id: S.user.id }, { onConflict: "user_id,anime_id,episode" });
+        if (error) throw new Error("Не удалось сохранить историю: " + error.message);
+      } else lsSet("tsukimi:hist:" + S.user.name, JSON.stringify(hist));
     },
 
     // История: каждая открытая серия (одна строка на аниме и серию, время обновляется при повторном просмотре)
@@ -238,7 +293,7 @@
       rows.delete(Number(animeId));
       emit();
       if (cloud) await sb.from("library").delete().eq("user_id", S.user.id).eq("anime_id", animeId);
-      else lsSet("tsukimi:lib:" + S.user.name, JSON.stringify(S.all()));
+      else lsSet("tsukimi:lib:" + S.user.name, JSON.stringify([...rows.values()]));
     },
 
     // ---------- друзья (только облачный режим) ----------
@@ -273,7 +328,7 @@
     },
     async friendAccept(fid) { const { error } = await sb.from("friendships").update({ status: "accepted" }).eq("id", fid); if (error) throw new Error(error.message); },
     async friendRemove(fid) { const { error } = await sb.from("friendships").delete().eq("id", fid); if (error) throw new Error(error.message); },
-    async friends(ids) {
+    async friends(ids, kino) {
       if (!cloud || !S.user || !ids || !ids.length) return [];
       const { data, error } = await sb
         .from("library")
@@ -282,7 +337,7 @@
         .order("updated_at", { ascending: false })
         .limit(80);
       if (error) throw new Error(error.message);
-      return data.map((r) => ({ ...r, friend: (r.profiles && r.profiles.name) || "Друг" }));
+      return data.filter((r) => isK(r.anime_id) === !!kino).map((r) => ({ ...r, friend: (r.profiles && r.profiles.name) || "Друг" }));
     },
   };
 

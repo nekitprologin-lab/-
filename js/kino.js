@@ -21,6 +21,17 @@
   }
 
   const L = "language=ru-RU";
+  const KSTATUS = { watching: "Смотрю", planned: "В планах", completed: "Просмотрено", dropped: "Брошено" };
+  // постер из строки библиотеки: "tmdb:/abc.jpg" -> адрес через наш воркер
+  const posterUrl = (r) => (r && r.poster ? (String(r.poster).startsWith("tmdb:") ? img("w342", String(r.poster).slice(5)) : r.poster) : "");
+  const libHref = (r) => { const k = window.Store.kparse(r.anime_id); return `#/${k.type}/${k.id}`; };
+  function lcard(r, sub) {
+    const k = window.Store.kparse(r.anime_id);
+    return `<a class="card" href="#/${k.type}/${k.id}"><div class="poster">${r.poster ? `<img src="${esc(posterUrl(r))}" alt="" loading="lazy">` : ""}
+      ${r.score ? `<span class="score">${(r.score / 10).toFixed(1)}</span>` : ""}${r.liked ? `<span class="heart">♥</span>` : ""}</div>
+      <div class="name">${esc(r.title)}</div><div class="sub">${esc(sub || (k.type === "tv" ? "Сериал" : "Фильм"))}</div></a>`;
+  }
+  const epLabel = (h) => (h.anime_id >= 2 * 10000000 ? `Сезон ${Math.floor(h.episode / 1000)}, серия ${h.episode % 1000}` : "Фильм");
   const kind = (m, def) => m.media_type || def;
   const title = (m) => m.title || m.name || "";
   const year = (m) => String(m.release_date || m.first_air_date || "").slice(0, 4);
@@ -58,12 +69,77 @@
         <a class="btn primary" href="#/${hero.media_type === "tv" ? "tv" : "movie"}/${hero.id}">Открыть</a></div></div>`;
     }
     h += `<div class="wrap">`;
+    h += `<div id="kMine"></div><div id="kRecs"></div><div id="kFriends"></div>`;
     h += section("В тренде", rowOf((trend.results || []).slice(0, 18), "movie", true));
     h += section("Сейчас в кино", rowOf(movies.results || [], "movie"));
     h += section("Сериалы в эфире", rowOf(tv.results || [], "tv"));
     h += section("Лучшие фильмы", rowOf(top.results || [], "movie"));
     h += section("Лучшие сериалы", rowOf(topTv.results || [], "tv"));
     app.innerHTML = h + `</div>`;
+    personal(app);
+  }
+
+  // личные блоки на главной: продолжить, в планах, рекомендации по лайкам, что смотрят друзья
+  async function personal(app) {
+    const St = window.Store;
+    if (!St || !St.user) return;
+    const all = St.kinoAll(), hist = St.kinoHistory();
+    const mine = app.querySelector("#kMine");
+    if (mine) {
+      const seen = new Set(), cont = [];
+      hist.forEach((hh) => { if (!seen.has(hh.anime_id) && (St.get(hh.anime_id) || {}).status !== "completed") { seen.add(hh.anime_id); cont.push(hh); } });
+      let html = "";
+      if (cont.length) html += section("Продолжить просмотр", `<div class="row">${cont.slice(0, 14).map((hh) => lcard({ ...(St.get(hh.anime_id) || {}), anime_id: hh.anime_id, title: hh.title, poster: hh.poster, liked: (St.get(hh.anime_id) || {}).liked }, epLabel(hh))).join("")}</div>`);
+      const planned = all.filter((r) => r.status === "planned").sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1));
+      if (planned.length) html += section("В планах", `<div class="row">${planned.slice(0, 14).map((r) => lcard(r)).join("")}</div>`);
+      mine.outerHTML = html;
+    }
+    // рекомендации: похожее на то, что понравилось или просмотрено
+    try {
+      const base = all.filter((r) => r.liked || r.status === "completed").sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1)).slice(0, 2);
+      const box = app.querySelector("#kRecs");
+      if (box && base.length) {
+        const lists = await Promise.all(base.map((r) => { const k = St.kparse(r.anime_id); return tmdb(`/${k.type}/${k.id}/recommendations?${L}`).then((j) => (j.results || []).map((x) => ({ ...x, media_type: k.type }))).catch(() => []); }));
+        const have = new Set(all.map((r) => r.anime_id));
+        const seen = new Set(), out = [];
+        for (let i = 0; out.length < 18 && i < 20; i++) lists.forEach((l) => { const x = l[i]; if (x && x.poster_path && !seen.has(x.media_type + x.id) && !have.has(St.kid(x.media_type, x.id))) { seen.add(x.media_type + x.id); out.push(x); } });
+        if (out.length) box.outerHTML = section("Рекомендуем тебе", rowOf(out, "movie"));
+      }
+    } catch (e) {}
+    try {
+      const fs = await St.friendships();
+      const box = app.querySelector("#kFriends");
+      if (box && fs.ready && fs.friends.length) {
+        const rows = await St.friends(fs.friends.map((f) => f.id), true);
+        const items = rows.filter((r) => r.liked || r.status).slice(0, 12);
+        if (items.length) box.outerHTML = section("Что смотрят друзья", `<div class="row">${items.map((r) => lcard(r, r.friend + (r.liked ? " ♥" : KSTATUS[r.status] ? ": " + KSTATUS[r.status].toLowerCase() : ""))).join("")}</div>`);
+      }
+    } catch (e) {}
+  }
+
+  // ---------- библиотека фильмов ----------
+  function library(app, params) {
+    const St = window.Store;
+    if (!St.user) { location.hash = "#/login"; return; }
+    const tab = params.get("tab") || "liked";
+    const all = St.kinoAll(), hist = St.kinoHistory();
+    const tabs = [["liked", "Нравится"], ...Object.entries(KSTATUS), ["history", "История"]];
+    const count = (k) => (k === "history" ? hist.length : all.filter((r) => (k === "liked" ? r.liked : r.status === k)).length);
+    const stag = (html, i) => html.replace('<a class="card"', `<a class="card in" style="--i:${Math.min(i, 20)}"`);
+    const fmt = (iso) => { try { return new Date(iso).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
+    const empty = { liked: "Нажми «♡ Нравится» на странице фильма, и он появится здесь.", watching: "Здесь будет то, что ты смотришь. Нажмёшь «Смотреть», и фильм добавится сам.", planned: "Выбери «В планах» на странице фильма или сериала.", completed: "Отметь уже просмотренное, и по нему подберутся рекомендации.", dropped: "Пока ничего не брошено.", history: "Открытые фильмы и серии появятся здесь." };
+    let body = "";
+    if (tab === "history") {
+      body = hist.length ? `<div class="grid lib-grid">${hist.map((hh, i) => stag(lcard({ ...(St.get(hh.anime_id) || {}), anime_id: hh.anime_id, title: hh.title, poster: hh.poster }, epLabel(hh) + " · " + fmt(hh.watched_at)), i)).join("")}</div>` : "";
+    } else {
+      const list = all.filter((r) => (tab === "liked" ? r.liked : r.status === tab)).sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1));
+      body = list.length ? `<div class="grid lib-grid">${list.map((r, i) => stag(lcard(r), i)).join("")}</div>` : "";
+    }
+    if (!body) body = `<div class="lib-empty"><div class="moon"></div><p>${esc(empty[tab] || "Пока пусто.")}</p><div class="actions" style="justify-content:center"><a class="btn primary" href="#/kfind">Открыть каталог</a></div></div>`;
+    app.innerHTML = `<div class="wrap lib"><div class="lib-head"><h1>Моё кино</h1>
+      <div class="lib-stats"><span><b>${all.filter((r) => r.status || r.liked).length}</b> в библиотеке</span><span><b>${all.filter((r) => r.status === "completed").length}</b> просмотрено</span><span><b>${all.filter((r) => r.liked).length}</b> нравится</span></div></div>
+      <div class="lib-tabs" role="tablist">${tabs.map(([k, v]) => `<a role="tab" class="${k === tab ? "on" : ""}" href="#/klib?tab=${k}">${v}<em>${count(k)}</em></a>`).join("")}</div>
+      <div class="lib-body">${body}</div></div>`;
   }
 
   const STATUS_TV = { "Returning Series": "Выходит", Ended: "Завершён", Canceled: "Отменён", "In Production": "В производстве", Planned: "Анонс" };
@@ -72,7 +148,7 @@
     if (!/^\d{1,9}$/.test(String(id || ""))) { app.innerHTML = `<div class="wrap"><div class="empty">Такой страницы нет. <a href="#/kino">В Киноман</a></div></div>`; return; }
     app.innerHTML = `<div class="loading">Загружаю…</div>`;
     let m;
-    try { m = await tmdb(`/${type}/${id}?${L}&append_to_response=external_ids,credits,recommendations`); }
+    try { m = await tmdb(`/${type}/${id}?${L}&append_to_response=external_ids,credits,recommendations,videos&include_video_language=ru,en,null`); }
     catch (e) { app.innerHTML = `<div class="wrap"><div class="empty">${esc(e.message === "not_configured" ? "Каталог ещё подключается." : e.message)}</div></div>`; return; }
     const isTv = type === "tv";
     const ttl = title(m);
@@ -87,6 +163,11 @@
     ].join("");
     const cast = ((m.credits && m.credits.cast) || []).slice(0, 8).map((c) => c.name).join(", ");
     const recs = ((m.recommendations && m.recommendations.results) || []).slice(0, 14);
+    const vids = ((m.videos && m.videos.results) || []).filter((v) => v.site === "YouTube" && (v.type === "Trailer" || v.type === "Teaser"));
+    vids.sort((a, b) => (b.iso_639_1 === "ru") - (a.iso_639_1 === "ru") || (b.type === "Trailer") - (a.type === "Trailer") || (b.official ? 1 : 0) - (a.official ? 1 : 0));
+    const trailer = vids[0] || null;
+    const item = { type, id: m.id, title: ttl, poster_path: m.poster_path, genres: (m.genres || []).map((g) => g.name), score: m.vote_average };
+    const lib = (window.Store && window.Store.user && window.Store.get(window.Store.kid(type, m.id))) || {};
     const seasons = isTv ? (m.seasons || []).filter((x) => x.season_number > 0) : [];
     const banner = m.backdrop_path ? img("w1280", m.backdrop_path) : "";
     app.innerHTML = `<div class="detail">
@@ -98,7 +179,13 @@
           ${orig ? `<div class="alt">${esc(orig)}</div>` : ""}
           <div class="meta">${meta}</div>
           <div class="chips">${(m.genres || []).map((g) => `<span class="chip">${esc(g.name)}</span>`).join("")}</div>
-          <div class="actions"><button type="button" class="btn primary" id="kPlay">Смотреть</button></div>
+          <div class="actions">
+            <button type="button" class="btn primary" id="kPlay">Смотреть</button>
+            ${trailer ? `<button type="button" class="btn" id="kTrailerBtn">▶ Трейлер</button>` : ""}
+            <button type="button" class="btn ${lib.liked ? "liked" : ""}" id="kLike">${lib.liked ? "♥ Нравится" : "♡ Нравится"}</button>
+            <select class="select" id="kStatus" aria-label="Статус"><option value="">Не в списке</option>${Object.entries(KSTATUS).map(([k, v]) => `<option value="${k}" ${lib.status === k ? "selected" : ""}>${v}</option>`).join("")}</select>
+          </div>
+          <div id="kTrailer"></div>
           ${m.tagline ? `<div class="alt" style="margin-top:18px">«${esc(m.tagline)}»</div>` : ""}
           <p class="desc">${esc(m.overview || "Описание пока отсутствует.")}</p>
           ${cast ? `<div class="muted" style="margin-top:14px"><b>В ролях:</b> ${esc(cast)}</div>` : ""}
@@ -126,6 +213,13 @@
     }
     async function play(season, episode) {
       box.innerHTML = `<div class="loading">Ищу плеер…</div>`;
+      const St = window.Store;
+      if (St && St.user) {
+        St.addHistoryKino(item, season, episode).catch(() => {});
+        if (!St.get(St.kid(type, m.id)) || !St.get(St.kid(type, m.id)).status) {
+          St.saveKino(item, { status: "watching" }).then(() => { const sel = app.querySelector("#kStatus"); if (sel) sel.value = "watching"; }).catch(() => {});
+        }
+      }
       try {
         let src = await getUrl();
         if (isTv) src += (src.includes("?") ? "&" : "?") + "season=" + season + "&episode=" + episode;
@@ -148,6 +242,29 @@
       w.scrollIntoView({ behavior: "smooth", block: "start" });
       if (isTv) drawEps(curS);
       play(curS, curE);
+    };
+    const needLogin = () => { window.toast && window.toast("Сначала войди"); location.hash = "#/login"; };
+    app.querySelector("#kLike").onclick = async () => {
+      const St = window.Store;
+      if (!St || !St.user) return needLogin();
+      const liked = !(St.get(St.kid(type, m.id)) || {}).liked;
+      await St.saveKino(item, { liked }).catch((e) => window.toast && window.toast(e.message));
+      const b = app.querySelector("#kLike");
+      b.className = "btn" + (liked ? " liked" : "");
+      b.textContent = liked ? "♥ Нравится" : "♡ Нравится";
+    };
+    app.querySelector("#kStatus").onchange = async (e) => {
+      const St = window.Store;
+      if (!St || !St.user) { e.target.value = ""; return needLogin(); }
+      await St.saveKino(item, { status: e.target.value || null }).catch((err) => window.toast && window.toast(err.message));
+      window.toast && window.toast("Сохранено");
+    };
+    const tb = app.querySelector("#kTrailerBtn");
+    if (tb) tb.onclick = () => {
+      const box2 = app.querySelector("#kTrailer");
+      if (box2.firstChild) { box2.innerHTML = ""; tb.textContent = "▶ Трейлер"; return; }
+      tb.textContent = "✕ Трейлер";
+      box2.innerHTML = `<div class="player-wrap kino-player" style="margin-top:18px"><iframe src="https://www.youtube-nocookie.com/embed/${esc(trailer.key)}?rel=0" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" style="width:100%;aspect-ratio:16/9;border:0;border-radius:14px;background:#000"></iframe></div><div class="muted" style="margin-top:8px;font-size:13px">Трейлер идёт с YouTube: без VPN у некоторых провайдеров может не загрузиться. <a href="https://www.youtube.com/watch?v=${esc(trailer.key)}" target="_blank" rel="noopener">Открыть на YouTube</a></div>`;
     };
     if (isTv) {
       app.querySelector("#kSeasons").onclick = (e) => {
@@ -265,5 +382,5 @@
     }));
   }
 
-  window.Kino = { home, detail, find, suggest, ROUTES: ["kino", "movie", "tv", "kfind"] };
+  window.Kino = { home, detail, find, suggest, library, posterUrl, libHref, ROUTES: ["kino", "movie", "tv", "kfind", "klib"] };
 })();

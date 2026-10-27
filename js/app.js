@@ -17,6 +17,7 @@
   const AIRING = { RELEASING: "Выходит", FINISHED: "Завершён", NOT_YET_RELEASED: "Анонс", CANCELLED: "Отменён", HIATUS: "Пауза" };
 
   let toastTimer;
+  window.toast = (m) => toast(m);
   function toast(msg) {
     const t = $("#toast");
     t.textContent = msg;
@@ -1154,7 +1155,8 @@
         app.innerHTML = `<div class="wrap"><h1 style="font-size:26px">Друзья</h1><div class="empty" style="margin-top:20px">Друзья ещё настраиваются на сервере. Загляни чуть позже.</div></div>`;
         return;
       }
-      const rows = await Store.friends(fs.friends.map((f) => f.id)).catch(() => []);
+      const kmode = document.documentElement.dataset.mode === "kino" && window.Kino;
+      const rows = await Store.friends(fs.friends.map((f) => f.id), !!kmode).catch(() => []);
       const person = (p, btns) => `<div class="fr-row"><span class="fr-av">${esc((Array.from(p.name)[0] || "?").toUpperCase())}</span><b>${esc(p.name)}</b><span class="fr-btns">${btns}</span></div>`;
       const incoming = fs.incoming.length ? `<h2 class="fr-h">Заявки в друзья</h2><div class="fr-list">${fs.incoming.map((p) => person(p, `<button class="btn primary" data-acc="${p.fid}">Принять</button><button class="btn" data-del="${p.fid}">Отклонить</button>`)).join("")}</div>` : "";
       const mine = fs.friends.length ? `<h2 class="fr-h">Мои друзья · ${fs.friends.length}</h2><div class="fr-list">${fs.friends.map((p) => person(p, `<button class="btn" data-del="${p.fid}">Удалить</button>`)).join("")}</div>` : "";
@@ -1162,8 +1164,8 @@
       const feed = !fs.friends.length
         ? `<div class="empty">Добавь друга по имени — и тут появится, что он смотрит.</div>`
         : rows.length
-          ? `<div class="friend-list">${rows.map((r) => `<a class="friend" href="#/anime/${r.anime_id}">
-          ${r.poster ? `<img src="${esc(r.poster)}" alt="" loading="lazy">` : ""}
+          ? `<div class="friend-list">${rows.map((r) => `<a class="friend" href="${kmode ? window.Kino.libHref(r) : "#/anime/" + r.anime_id}">
+          ${r.poster ? `<img src="${esc(kmode ? window.Kino.posterUrl(r) : r.poster)}" alt="" loading="lazy">` : ""}
           <div><b>${esc(r.friend)}</b> ${r.liked ? "поставил(а) ♥" : r.episode ? "смотрит серию " + esc(r.episode) : STATUS[r.status] ? "добавил(а) в «" + STATUS[r.status] + "»" : "открыл(а)"}
           <div>${esc(r.title)}</div></div></a>`).join("")}</div>`
           : `<div class="empty">Друзья пока ничего не отметили.</div>`;
@@ -1327,15 +1329,16 @@
   // ---------- шапка и роутер ----------
   function drawNav() {
     const hash = location.hash || "#/";
+    const kinoMode = document.documentElement.dataset.mode === "kino";
     const link = (href, text) => `<a href="${href}" class="${hash.startsWith(href) && href !== "#/" ? "on" : ""}">${text}</a>`;
     $("#navLinks").innerHTML =
       (document.documentElement.dataset.mode === "kino" ? link("#/kfind", "Каталог") : link("#/search", "Каталог")) +
       (Store.user
-        ? link("#/library", "Библиотека") + link("#/friends", "Друзья") +
+        ? (kinoMode ? link("#/klib", "Моё кино") : link("#/library", "Библиотека")) + link("#/friends", "Друзья") +
           `<div class="usermenu"><button id="userBtn" aria-haspopup="true" aria-expanded="false"><span class="av">${esc((Array.from(Store.user.name || "?")[0] || "?").toUpperCase())}</span><span class="un">${esc(Store.user.name)}</span><span class="car">▾</span></button>
             <div class="menu" id="userMenu" hidden>
-              <a href="#/library">Моя библиотека</a>
-              <button type="button" id="addAnimeBtn">Добавить аниме</button>
+              <a href="${kinoMode ? "#/klib" : "#/library"}">${kinoMode ? "Моё кино" : "Моя библиотека"}</a>
+              ${kinoMode ? "" : `<button type="button" id="addAnimeBtn">Добавить аниме</button>`}
               <hr>
               <button type="button" id="outBtn" class="danger">Выйти</button>
             </div></div>`
@@ -1346,7 +1349,7 @@
     ub.onclick = (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; ub.setAttribute("aria-expanded", String(!menu.hidden)); };
     menu.onclick = (e) => { e.stopPropagation(); if (e.target.closest("a")) close(); };
     document.addEventListener("click", close, { once: true });
-    $("#addAnimeBtn").onclick = () => { close(); openAddAnime(); };
+    if ($("#addAnimeBtn")) $("#addAnimeBtn").onclick = () => { close(); openAddAnime(); };
     $("#outBtn").onclick = async () => { close(); await Store.signOut(); location.hash = "#/"; route(); };
   }
 
@@ -1453,7 +1456,7 @@
     $("#navQ").placeholder = mode === "kino" ? "Найти фильм или сериал" : "Найти аниме";
     $$("#modeSw a").forEach((a) => a.classList.toggle("on", a.dataset.m === mode));
     drawNav();
-    const TITLES = { search: "Каталог", kfind: "Каталог фильмов", library: "Библиотека", friends: "Друзья", login: "Вход", diag: "Диагностика" };
+    const TITLES = { search: "Каталог", kfind: "Каталог фильмов", klib: "Моё кино", library: "Библиотека", friends: "Друзья", login: "Вход", diag: "Диагностика" };
     setTitle(TITLES[parts[0]] || "");
     window.scrollTo(0, 0);
     // плавное появление новой страницы (только при смене адреса, не при перерисовке)
@@ -1465,6 +1468,7 @@
       if (Store.user && Store.user.approved === false) pageInvite();
       else if (parts[0] === "kino") await window.Kino.home(app);
       else if (parts[0] === "kfind") await window.Kino.find(app, params);
+      else if (parts[0] === "klib") window.Kino.library(app, params);
       else if (parts[0] === "movie" || parts[0] === "tv") await window.Kino.detail(app, parts[0], parts[1]);
       else if (!parts.length) await pageHome();
       else if (parts[0] === "search") await pageSearch(params);
