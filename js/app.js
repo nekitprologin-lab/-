@@ -276,10 +276,10 @@
       <form class="filters" id="f" autocomplete="off">
         <label class="f-search"><input type="search" name="q" placeholder="Название аниме" value="${esc(state.q)}" aria-label="Название"></label>
         <select class="select" name="sort" aria-label="Сортировка">
-          <option value="">${state.q ? "По совпадению" : "По популярности"}</option>
+          <option value="">${state.q ? "Совпадение" : "Популярные"}</option>
           <option value="SCORE_DESC">По оценке</option>
           <option value="TRENDING_DESC">В тренде</option>
-          <option value="START_DATE_DESC">Сначала новые</option>
+          <option value="START_DATE_DESC">Новые</option>
         </select>
         <input type="number" name="year" placeholder="Год" min="1960" max="2100" value="${esc(state.year)}" aria-label="Год">
         <button class="btn" type="button" id="reset">Сбросить</button>
@@ -1329,7 +1329,7 @@
     const hash = location.hash || "#/";
     const link = (href, text) => `<a href="${href}" class="${hash.startsWith(href) && href !== "#/" ? "on" : ""}">${text}</a>`;
     $("#navLinks").innerHTML =
-      (document.documentElement.dataset.mode === "kino" ? "" : link("#/search", "Каталог")) +
+      (document.documentElement.dataset.mode === "kino" ? link("#/kfind", "Каталог") : link("#/search", "Каталог")) +
       (Store.user
         ? link("#/library", "Библиотека") + link("#/friends", "Друзья") +
           `<div class="usermenu"><button id="userBtn" aria-haspopup="true" aria-expanded="false"><span class="av">${esc((Array.from(Store.user.name || "?")[0] || "?").toUpperCase())}</span><span class="un">${esc(Store.user.name)}</span><span class="car">▾</span></button>
@@ -1453,7 +1453,7 @@
     $("#navQ").placeholder = mode === "kino" ? "Найти фильм или сериал" : "Найти аниме";
     $$("#modeSw a").forEach((a) => a.classList.toggle("on", a.dataset.m === mode));
     drawNav();
-    const TITLES = { search: "Каталог", library: "Библиотека", friends: "Друзья", login: "Вход", diag: "Диагностика" };
+    const TITLES = { search: "Каталог", kfind: "Каталог фильмов", library: "Библиотека", friends: "Друзья", login: "Вход", diag: "Диагностика" };
     setTitle(TITLES[parts[0]] || "");
     window.scrollTo(0, 0);
     // плавное появление новой страницы (только при смене адреса, не при перерисовке)
@@ -1464,6 +1464,7 @@
       // вошёл через Google без кода приглашения: пускаем только на страницу ввода кода
       if (Store.user && Store.user.approved === false) pageInvite();
       else if (parts[0] === "kino") await window.Kino.home(app);
+      else if (parts[0] === "kfind") await window.Kino.find(app, params);
       else if (parts[0] === "movie" || parts[0] === "tv") await window.Kino.detail(app, parts[0], parts[1]);
       else if (!parts.length) await pageHome();
       else if (parts[0] === "search") await pageSearch(params);
@@ -1509,7 +1510,29 @@
         <div class="sg-t"><b>${hl(Api.title(m), q)}</b><span>${esc([m.seasonYear, STATUS_FORMAT[m.format] || m.format, m.episodes ? m.episodes + " эп." : "", m.averageScore ? "★ " + (m.averageScore / 10).toFixed(1) : ""].filter(Boolean).join(" · "))}</span></div></a>`).join("")
       + `<a class="sg-all" href="#/search?q=${encodeURIComponent(q)}">Все результаты по «${esc(q)}»</a>`;
   };
+  const isKino = () => document.documentElement.dataset.mode === "kino";
+  // подсказки режима «Киноман»: фильмы и сериалы из TMDB
+  const sgKino = async () => {
+    const q = qIn.value.trim();
+    if (!q) { sgItems = []; return sgClose(); }
+    const my = ++sgSeq;
+    sgBox.hidden = false;
+    try {
+      const items = await window.Kino.suggest(q);
+      if (my !== sgSeq) return;
+      sgItems = items.map((m) => ({ kino: true, ...m }));
+      sgSel = -1;
+      sgBox.innerHTML = items.length
+        ? items.map((m, i) => `<a class="sg-row" role="option" href="${m.href}" data-i="${i}" style="animation-delay:${i * 28}ms"><img src="${esc(m.img)}" alt="" loading="lazy"><div class="sg-t"><b>${hl(m.title, q)}</b><span>${esc(m.sub)}</span></div></a>`).join("") + `<a class="sg-all" href="#/kfind?q=${encodeURIComponent(q)}">Все результаты по «${esc(q)}»</a>`
+        : `<div class="sg-empty">Ничего не нашлось по «${esc(q)}». Попробуй другое написание.</div>`;
+    } catch (e) {
+      if (my !== sgSeq) return;
+      sgItems = [];
+      sgBox.innerHTML = `<div class="sg-empty">Каталог сейчас не отвечает. Подожди пару секунд.</div>`;
+    }
+  };
   const sgRun = async () => {
+    if (isKino()) return sgKino();
     const q = qIn.value.trim();
     if (!q) { sgItems = []; return sgClose(); }
     sgQ = q;
@@ -1536,12 +1559,13 @@
     clearTimeout(sgTimer);
     const q = qIn.value.trim();
     if (!q) { sgSeq++; sgItems = []; return sgClose(); }
+    if (isKino()) { sgTimer = setTimeout(sgRun, 280); return; }
     // локальные подсказки показываем на каждую букву сразу, запрос в сеть — с небольшой паузой
     const loc = Api.localSearch(q, { limit: 8 });
     if (loc.length) { sgItems = loc; sgSel = -1; sgPaint(true); }
     sgTimer = setTimeout(sgRun, 220);
   });
-  qIn.addEventListener("focus", () => { if (qIn.value.trim() && sgItems.length) sgPaint(false); });
+  qIn.addEventListener("focus", () => { if (qIn.value.trim() && sgItems.length && !isKino()) sgPaint(false); });
   qIn.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { sgClose(); qIn.blur(); }
     else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !sgBox.hidden && sgItems.length) {
@@ -1557,7 +1581,8 @@
   form.onsubmit = (e) => {
     e.preventDefault();
     const q = qIn.value.trim();
-    if (sgSel >= 0 && sgItems[sgSel]) { location.hash = "#/anime/" + sgItems[sgSel].id; sgClose(); qIn.blur(); return; }
+    if (sgSel >= 0 && sgItems[sgSel]) { location.hash = sgItems[sgSel].kino ? sgItems[sgSel].href : "#/anime/" + sgItems[sgSel].id; sgClose(); qIn.blur(); return; }
+    if (isKino()) { location.hash = q ? "#/kfind?q=" + encodeURIComponent(q) : "#/kfind"; sgClose(); qIn.blur(); return; }
     location.hash = q ? "#/search?q=" + encodeURIComponent(q) : "#/search";
     sgClose();
     qIn.blur();

@@ -164,5 +164,106 @@
     }
   }
 
-  window.Kino = { home, detail, ROUTES: ["kino", "movie", "tv"] };
+  // ---------- поиск и каталог ----------
+  const GENRES = {
+    movie: [[28, "Боевик"], [12, "Приключения"], [16, "Мультфильм"], [35, "Комедия"], [80, "Криминал"], [99, "Документальный"], [18, "Драма"], [10751, "Семейный"], [14, "Фэнтези"], [36, "История"], [27, "Ужасы"], [10402, "Музыка"], [9648, "Детектив"], [10749, "Мелодрама"], [878, "Фантастика"], [53, "Триллер"], [10752, "Военный"], [37, "Вестерн"]],
+    tv: [[10759, "Боевик и приключения"], [16, "Мультсериал"], [35, "Комедия"], [80, "Криминал"], [99, "Документальный"], [18, "Драма"], [10751, "Семейный"], [10762, "Детский"], [9648, "Детектив"], [10765, "Фантастика и фэнтези"], [10768, "Война и политика"], [10764, "Реалити"], [37, "Вестерн"]],
+  };
+  const today = () => new Date().toISOString().slice(0, 10);
+
+  async function find(app, params) {
+    const st = { q: params.get("q") || "", type: params.get("type") === "tv" ? "tv" : "movie", genre: params.get("genre") || "", sort: params.get("sort") || "", year: params.get("year") || "", page: 1 };
+    app.innerHTML = `<div class="wrap cat">
+      <div class="cat-head"><h1>Каталог</h1><p class="muted">Фильмы и сериалы со всего мира. Ищи по названию или подбирай по жанру и году.</p></div>
+      <div class="kf-tabs" id="kfType"><button type="button" data-t="movie">Фильмы</button><button type="button" data-t="tv">Сериалы</button></div>
+      <form class="filters" id="kf" autocomplete="off">
+        <label class="f-search"><input type="search" name="q" placeholder="Название фильма или сериала" value="${esc(st.q)}" aria-label="Название"></label>
+        <select class="select" name="sort" aria-label="Сортировка">
+          <option value="">Популярные</option><option value="vote_average.desc">По оценке</option><option value="date">Новые</option>
+        </select>
+        <input type="number" name="year" placeholder="Год" min="1900" max="2100" value="${esc(st.year)}" aria-label="Год">
+        <button class="btn" type="button" id="kfReset">Сбросить</button>
+      </form>
+      <div class="chips genre-row" id="kfGenres"></div>
+      <div id="kfRes"></div></div>`;
+    const res = app.querySelector("#kfRes"), input = app.querySelector("input[name=q]"), sel = app.querySelector("select[name=sort]");
+    sel.value = st.sort;
+    let seq = 0, timer = null;
+    const skel = () => `<div class="grid">${Array.from({ length: 12 }, () => `<div class="card sk"><div class="poster"></div><div class="name"></div><div class="sub"></div></div>`).join("")}</div>`;
+    const drawTabs = () => app.querySelectorAll("#kfType button").forEach((b) => b.classList.toggle("on", b.dataset.t === st.type));
+    const drawGenres = () => {
+      app.querySelector("#kfGenres").innerHTML = GENRES[st.type].map(([id, n]) => `<button type="button" class="chip ${String(id) === st.genre ? "on" : ""}" data-g="${id}">${esc(n)}</button>`).join("");
+    };
+    const sync = () => {
+      const p = new URLSearchParams();
+      Object.entries({ q: st.q, type: st.type === "tv" ? "tv" : "", genre: st.genre, sort: st.sort, year: st.year }).forEach(([k, v]) => v && p.set(k, v));
+      history.replaceState(null, "", "#/kfind" + (p.toString() ? "?" + p : ""));
+    };
+    const url = () => {
+      const t = st.type, yp = t === "tv" ? "first_air_date_year" : "year";
+      if (st.q) return `/search/${t}?${L}&query=${encodeURIComponent(st.q)}&page=${st.page}&include_adult=false${st.year ? `&${yp}=${encodeURIComponent(st.year)}` : ""}`;
+      const dk = t === "tv" ? "first_air_date" : "primary_release_date";
+      let u = `/discover/${t}?${L}&page=${st.page}&include_adult=false&sort_by=`;
+      if (st.sort === "vote_average.desc") u += `vote_average.desc&vote_count.gte=400`;
+      else if (st.sort === "date") u += `${dk}.desc&${dk}.lte=${today()}&vote_count.gte=20`;
+      else u += `popularity.desc`;
+      if (st.genre) u += `&with_genres=${st.genre}`;
+      if (st.year) u += `&${t === "tv" ? "first_air_date_year" : "primary_release_year"}=${encodeURIComponent(st.year)}`;
+      return u;
+    };
+    async function run(append) {
+      const my = ++seq;
+      if (!append) res.innerHTML = skel();
+      let r;
+      try { r = await tmdb(url()); } catch (e) {
+        if (my !== seq) return;
+        res.innerHTML = `<div class="empty">${e.message === "not_configured" ? "Каталог ещё подключается." : esc(e.message)}</div>`; return;
+      }
+      if (my !== seq) return;
+      let items = (r.results || []).filter((m) => m.poster_path || m.backdrop_path);
+      if (st.q && st.genre) items = items.filter((m) => (m.genre_ids || []).includes(+st.genre));
+      const html = items.map((m, i) => card(m, st.type).replace('<a class="card"', `<a class="card in" style="--i:${Math.min(i, 20)}"`)).join("");
+      const more = r.page < Math.min(r.total_pages || 1, 25);
+      if (append) {
+        res.querySelector(".more") && res.querySelector(".more").remove();
+        res.querySelector(".grid").insertAdjacentHTML("beforeend", html);
+      } else if (!items.length) { res.innerHTML = `<div class="empty">Ничего не нашлось. Попробуй часть названия или сними фильтры.</div>`; return; }
+      else res.innerHTML = `<div class="grid">${html}</div>`;
+      if (more) {
+        res.insertAdjacentHTML("beforeend", `<button class="btn more" type="button">Показать ещё</button>`);
+        res.querySelector(".more").onclick = () => { st.page++; run(true); };
+      }
+    }
+    const change = (delay) => { st.page = 1; sync(); clearTimeout(timer); timer = setTimeout(() => run(false), delay || 0); };
+    app.querySelector("#kf").onsubmit = (e) => e.preventDefault();
+    input.addEventListener("input", () => { st.q = input.value.trim(); sel.disabled = !!st.q; change(st.q ? 280 : 0); });
+    sel.onchange = () => { st.sort = sel.value; change(0); };
+    app.querySelector("input[name=year]").addEventListener("input", (e) => { st.year = e.target.value; change(400); });
+    app.querySelector("#kfType").onclick = (e) => {
+      const b = e.target.closest("[data-t]"); if (!b || b.dataset.t === st.type) return;
+      st.type = b.dataset.t; st.genre = ""; drawTabs(); drawGenres(); change(0);
+    };
+    app.querySelector("#kfGenres").onclick = (e) => {
+      const b = e.target.closest("[data-g]"); if (!b) return;
+      st.genre = st.genre === b.dataset.g ? "" : b.dataset.g;
+      drawGenres(); change(0);
+    };
+    app.querySelector("#kfReset").onclick = () => {
+      st.q = st.genre = st.sort = st.year = ""; input.value = ""; sel.value = ""; sel.disabled = false;
+      app.querySelector("input[name=year]").value = ""; drawGenres(); change(0);
+    };
+    sel.disabled = !!st.q;
+    drawTabs(); drawGenres(); run(false);
+  }
+
+  // подсказки в строке поиска в шапке
+  async function suggest(q) {
+    const r = await tmdb(`/search/multi?${L}&query=${encodeURIComponent(q)}&page=1&include_adult=false`);
+    return (r.results || []).filter((m) => (m.media_type === "movie" || m.media_type === "tv") && m.poster_path).slice(0, 8).map((m) => ({
+      href: `#/${m.media_type}/${m.id}`, img: img("w92", m.poster_path), title: title(m),
+      sub: [year(m), m.media_type === "tv" ? "Сериал" : "Фильм", m.vote_average ? "★ " + m.vote_average.toFixed(1) : ""].filter(Boolean).join(" · "),
+    }));
+  }
+
+  window.Kino = { home, detail, find, suggest, ROUTES: ["kino", "movie", "tv", "kfind"] };
 })();

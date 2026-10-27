@@ -88,3 +88,15 @@ html[data-mode="kino"] .detail-banner::after { background: linear-gradient(to to
 .detail .meta > span:first-child b, .kino-hero .meta b, .hero .meta b { margin-right: 6px; }
 .empty { border: 1px solid var(--edge); background: rgba(255, 255, 255, .02); border-radius: 16px; }
 html[data-device="mobile"] .empty { padding: 26px 18px !important; }
+
+/* ---------- телефон: правки по скриншотам ---------- */
+/* карточка входа не прилипает к краям экрана */
+html[data-device="mobile"] .auth { width: auto; max-width: none; margin: 18px 14px 0; }
+/* строка «·» между мета-данными не повисает в начале строки при переносе */
+html[data-device="mobile"] .meta { gap: 6px 14px; }
+html[data-device="mobile"] .meta > span + span::before { display: none; }
+/* панель фильтров компактнее: поиск, затем сортировка + год + сброс в один ряд */
+html[data-device="mobile"] .filters { margin: 18px 0 12px; }
+html[data-device="mobile"] .filters .select { flex: 1 1 0; min-width: 0; padding: 11px 26px 11px 14px; font-size: 14px; background-position: right 10px center; text-overflow: ellipsis; }
+html[data-device="mobile"] .filters input[type=number] { flex: 0 0 62px; width: 62px; padding: 11px 6px; text-align: center; font-size: 14.5px; }
+html[data-device="mobile"] .filters .btn { flex: none; padding: 11px 12px; min-height: 0; font-size: 14px; }
