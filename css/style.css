@@ -867,3 +867,9 @@ html[data-device="mobile"] .watch-bar h1, html[data-device="mobile"] .watch-bar 
 .fr-av { width: 34px; height: 34px; border-radius: 50%; background: var(--moon); color: var(--moon-ink); display: grid; place-items: center; font-weight: 700; }
 .fr-btns { margin-left: auto; display: flex; gap: 6px; }
 .fr-btns .btn { min-height: 34px; padding: 0 14px; font-size: 13px; }
+html[data-device="mobile"] .tip { padding: 10px 14px; gap: 10px; }
+html[data-device="mobile"] .tip p { font-size: 12.5px; line-height: 1.5; }
+html[data-device="mobile"] .watch-bar { gap: 8px 10px; }
+html[data-device="mobile"] .watch-bar .grow { order: 3; flex: 1 1 100%; min-width: 100%; font-size: 17px; }
+html[data-device="mobile"] .watch-bar .auto-skip { margin-left: auto; padding: 0 12px; font-size: 12.5px; }
+html[data-device="mobile"] .watch-bar .btn { min-height: 38px; padding: 0 14px; font-size: 13.5px; }
