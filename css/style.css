@@ -635,3 +635,40 @@ html:not([data-device="mobile"]) .row.ranked {
 html:not([data-device="mobile"]) .row.ranked .card { width: auto; }
 html:not([data-device="mobile"]) .row.ranked .poster { width: 100%; }
 html:not([data-device="mobile"]) .row.ranked .card::before { top: auto; bottom: 92px; font-size: 104px; }
+
+/* ---------- библиотека: счётчики ---------- */
+.lib-stats { display: flex; flex-wrap: wrap; gap: 8px; }
+.lib-stats span { padding: 6px 14px; border-radius: 999px; background: var(--s1); border: 1px solid var(--line); color: var(--muted); font-size: 13.5px; }
+.lib-stats b { color: var(--text); font-weight: 700; margin-right: 4px; }
+.add-sec { display: flex; align-items: center; gap: 8px; margin: 14px 0 6px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; letter-spacing: .02em; }
+.ai-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--moon); animation: pulse 1s ease-in-out infinite alternate; }
+@keyframes pulse { to { opacity: .25; transform: scale(.7); } }
+
+/* ---------- ряд «в тренде»: постеры подогнаны под ширину, места под большие цифры сохранены ---------- */
+.row-wrap { container-type: inline-size; }
+html:not([data-device="mobile"]) .row.ranked {
+  --pw: calc((100cqw - 4px - (var(--n) - 1) * var(--gap)) / var(--n) - 44px);
+  grid-auto-columns: max-content;
+}
+html:not([data-device="mobile"]) .row.ranked .card { width: calc(var(--pw) + var(--pad)); }
+html:not([data-device="mobile"]) .row.ranked .poster { width: var(--pw); }
+
+/* ---------- шапка: плавающая стеклянная «таблетка» ---------- */
+html:not([data-device="mobile"]) .nav { --gut: clamp(10px, 2vw, 28px); padding: 0 calc(var(--gut) + 24px); gap: 18px; }
+html:not([data-device="mobile"]) .nav::before { display: none; }
+html:not([data-device="mobile"]) .nav::after {
+  content: ""; position: absolute; z-index: -1; left: var(--gut); right: var(--gut); top: 8px; bottom: 8px; border-radius: 999px; pointer-events: none;
+  background: rgba(14, 14, 17, .5); border: 1px solid rgba(255, 255, 255, .1);
+  backdrop-filter: blur(18px) saturate(1.5); -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .06); transition: background .35s, box-shadow .35s;
+}
+html:not([data-device="mobile"]) .nav.scrolled { background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+html:not([data-device="mobile"]) .nav.scrolled::after { background: rgba(10, 10, 12, .78); }
+html:not([data-device="mobile"]) .nav-search { flex: 1; max-width: 520px; margin: 0 auto; position: relative; }
+html:not([data-device="mobile"]) .nav-search input {
+  padding: 10px 18px 10px 44px; background: rgba(255, 255, 255, .07) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a8a69e' stroke-width='2' stroke-linecap='round'><circle cx='11' cy='11' r='7'/><path d='M20 20l-3.5-3.5'/></svg>") 16px center / 18px no-repeat;
+  border-color: rgba(255, 255, 255, .08);
+}
+html:not([data-device="mobile"]) .nav-search input:focus { background-color: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .22); box-shadow: 0 0 0 4px rgba(236, 228, 204, .08); }
+html:not([data-device="mobile"]) .nav-links { margin-left: 0; gap: 4px; }
+html:not([data-device="mobile"]) .nav-links a.on { background: var(--moon); color: #0a0a0a; text-shadow: none; font-weight: 600; }

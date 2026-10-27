@@ -1114,7 +1114,13 @@
         <div><span class="muted">Продолжить просмотр</span><b>${esc(last.title || "Аниме")}</b>
         <span class="muted">Серия ${esc(last.episode)}${lp && lp.ep === String(last.episode) ? " · с " + mmss(lp.t) : ""}</span></div><i>▶</i></a>` : "";
     app.innerHTML = `<div class="wrap lib">
-      <div class="lib-head"><h1>Библиотека</h1><span class="muted">${all.length} аниме · ${hist.length} серий в истории</span></div>
+      <div class="lib-head"><h1>Библиотека</h1>
+        <div class="lib-stats">
+          <span><b>${all.length}</b> в библиотеке</span>
+          <span><b>${all.filter((r) => r.status === "completed").length}</b> просмотрено</span>
+          <span><b>${all.filter((r) => r.liked).length}</b> нравится</span>
+          <span><b>${hist.length}</b> серий в истории</span>
+        </div></div>
       ${cont}
       <div class="lib-tabs" role="tablist">${tabs.map(([k, v]) => `<a role="tab" class="${k === tab ? "on" : ""}" href="#/library?tab=${k}">${v}<em>${count(k)}</em></a>`).join("")}</div>
       <div class="lib-body">${body}</div>
@@ -1323,19 +1329,27 @@
     el.onclick = (e) => { if (e.target === el) close(); };
     $("#addClose").onclick = close;
     const res = $("#addRes");
-    let items = [], timer = null, seq = 0;
-    const draw = () => {
-      res.innerHTML = items.length ? items.map((m) => {
-        const done = (Store.get(m.id) || {}).status === "completed";
-        return `<div class="add-row"><img src="${esc(m.coverImage && m.coverImage.large)}" alt="" loading="lazy">
+    // два слоя: 1) по буквам, мгновенно (локальный индекс + подсказки каталога); 2) умный подбор по смыслу (опечатки, описание, жанры)
+    let items = [], smart = [], smartState = "", timer = null, aiTimer = null, seq = 0;
+    const row = (m) => {
+      const done = (Store.get(m.id) || {}).status === "completed";
+      return `<div class="add-row"><img src="${esc(m.coverImage && (m.coverImage.medium || m.coverImage.large))}" alt="" loading="lazy">
           <div class="add-info"><b>${esc(Api.title(m))}</b><span class="muted">${[m.seasonYear, STATUS_FORMAT[m.format] || m.format, m.episodes ? m.episodes + " эп." : ""].filter(Boolean).join(" · ")}</span></div>
           <button type="button" class="btn ${done ? "primary" : ""}" data-id="${m.id}">${done ? "✓ Просмотрено" : "Просмотрено"}</button></div>`;
-      }).join("") : `<p class="muted">${$("#addQ").value.trim() ? "Ничего не найдено" : ""}</p>`;
+    };
+    const all = () => [...items, ...smart];
+    const draw = () => {
+      const q = $("#addQ").value.trim();
+      let h = items.map(row).join("");
+      if (smartState === "wait") h += `<div class="add-sec"><i class="ai-dot"></i>Подбираю по смыслу…</div>`;
+      else if (smart.length) h += `<div class="add-sec">Подобрано по смыслу</div>` + smart.map(row).join("");
+      if (!h) h = `<p class="muted">${q ? (smartState === "wait" ? "Ищу…" : "Ничего не найдено. Попробуй часть названия или опиши словами.") : ""}</p>`;
+      res.innerHTML = h;
     };
     res.onclick = async (e) => {
       const b = e.target.closest("button[data-id]");
       if (!b) return;
-      const m = items.find((x) => String(x.id) === b.dataset.id);
+      const m = all().find((x) => String(x.id) === b.dataset.id);
       if (!m) return;
       const done = (Store.get(m.id) || {}).status === "completed";
       try {
@@ -1345,15 +1359,36 @@
       } catch (err) { toast(err.message); }
     };
     $("#addQ").oninput = (e) => {
-      clearTimeout(timer);
+      clearTimeout(timer); clearTimeout(aiTimer);
       const q = e.target.value.trim();
+      const my = ++seq;
+      smart = []; smartState = "";
       if (!q) { items = []; return draw(); }
+      // слой 1: на каждую букву сразу, из локального индекса
+      items = Api.localSearch(q, { limit: 12 });
+      draw();
       timer = setTimeout(async () => {
-        const my = ++seq;
-        res.innerHTML = `<p class="muted">Ищу…</p>`;
-        try { const r = await Api.search({ q }); if (my === seq) { items = r.items.slice(0, 12); draw(); } }
-        catch (err) { if (my === seq) res.innerHTML = `<p class="muted">${esc(err.message)}</p>`; }
-      }, 350);
+        // дополняем ответом каталога
+        try {
+          const net = await Api.suggest(q);
+          if (my !== seq) return;
+          const seen = new Set(items.map((m) => m.id));
+          items = [...items, ...net.filter((m) => !seen.has(m.id))].slice(0, 12);
+          draw();
+        } catch (err) {}
+      }, 220);
+      // слой 2: умный подбор, когда обычных совпадений мало или запрос описательный
+      aiTimer = setTimeout(async () => {
+        if (my !== seq) return;
+        const S = window.Smart; const desc = S && S.parse(q).descriptive;
+        if (items.length >= 6 && !desc) return;
+        smartState = "wait"; draw();
+        const r = await Api.aiSearch(q).catch(() => null);
+        if (my !== seq) return;
+        const seen = new Set(items.map((m) => m.id));
+        smart = r ? r.items.filter((m) => !seen.has(m.id)).slice(0, 8) : [];
+        smartState = ""; draw();
+      }, 650);
     };
     $("#addQ").focus();
   }
