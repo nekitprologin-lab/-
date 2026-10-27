@@ -873,3 +873,37 @@ html[data-device="mobile"] .watch-bar { gap: 8px 10px; }
 html[data-device="mobile"] .watch-bar .grow { order: 3; flex: 1 1 100%; min-width: 100%; font-size: 17px; }
 html[data-device="mobile"] .watch-bar .auto-skip { margin-left: auto; padding: 0 12px; font-size: 12.5px; }
 html[data-device="mobile"] .watch-bar .btn { min-height: 38px; padding: 0 14px; font-size: 13.5px; }
+
+/* ---------- переключатель режимов ---------- */
+.modesw { display: inline-flex; gap: 2px; padding: 3px; margin-left: 14px; border-radius: 999px; background: rgba(255,255,255,.07); border: 1px solid var(--line); flex: none; }
+.modesw a { padding: 5px 13px; border-radius: 999px; font-size: 12.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); transition: background .3s var(--spring), color .2s; }
+.modesw a:hover { color: #fff; }
+.modesw a.on { background: var(--moon); color: var(--moon-ink); }
+html[data-device="mobile"] .modesw { margin-left: 8px; }
+html[data-device="mobile"] .modesw a { padding: 5px 11px; }
+html[data-device="mobile"] .nav .logo { flex: none; }
+
+/* ---------- режим «Киноман»: жёлто-чёрная тема ---------- */
+html[data-mode="kino"] { --moon: #ffc61a; --moon-ink: #141000; --bg: #050503; }
+html[data-mode="kino"] body, html[data-mode="kino"] body { background-color: #050503; }
+html[data-mode="kino"] body::before {
+  background:
+    radial-gradient(ellipse 60% 45% at 12% -5%, rgba(255,198,26,.08), transparent 70%),
+    radial-gradient(ellipse 55% 50% at 100% 35%, rgba(255,150,0,.04), transparent 70%),
+    radial-gradient(ellipse 120% 90% at 50% 50%, transparent 55%, rgba(0,0,0,.6) 100%);
+}
+html[data-mode="kino"] .logo { color: var(--moon); letter-spacing: .02em; text-transform: uppercase; font-weight: 800; }
+html[data-mode="kino"] .nav-search { display: none; }
+html[data-mode="kino"] .section-head h2::before, html[data-mode="kino"] .section-title::before { background: var(--moon); }
+html[data-mode="kino"] .btn.primary { background: var(--moon); color: var(--moon-ink); }
+html[data-mode="kino"] .row.ranked .card::before { background-image: linear-gradient(180deg, #ffe38a, #ffc61a 60%, #c98f00); }
+.kino-hero { position: relative; min-height: 62vh; display: flex; align-items: flex-end; background-size: cover; background-position: center 25%; margin-top: calc(-1 * var(--nav-h)); }
+.kino-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(0deg, #050503 4%, rgba(5,5,3,.55) 45%, rgba(5,5,3,.25)); }
+.kino-hero-in { position: relative; z-index: 1; padding-bottom: 44px; max-width: 760px; margin-left: 0; }
+.kino-hero h1 { font-family: var(--font-title, var(--font-head)); font-size: clamp(34px, 5vw, 64px); line-height: 1.05; margin: 10px 0; }
+.kino-hero p { color: #cfcabb; max-width: 56ch; margin: 0 0 20px; }
+html[data-device="mobile"] .kino-hero { min-height: 480px; margin-top: 0; }
+html[data-device="mobile"] .kino-hero { min-height: 400px; }
+html[data-device="mobile"] .kino-hero p { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 14.5px; }
+html[data-device="mobile"][data-mode="kino"] .nav .logo { font-size: 17px; }
+html[data-device="mobile"] .nav-links { margin-left: auto; }

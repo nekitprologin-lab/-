@@ -1329,7 +1329,7 @@
     const hash = location.hash || "#/";
     const link = (href, text) => `<a href="${href}" class="${hash.startsWith(href) && href !== "#/" ? "on" : ""}">${text}</a>`;
     $("#navLinks").innerHTML =
-      link("#/search", "Каталог") +
+      (document.documentElement.dataset.mode === "kino" ? "" : link("#/search", "Каталог")) +
       (Store.user
         ? link("#/library", "Библиотека") + link("#/friends", "Друзья") +
           `<div class="usermenu"><button id="userBtn" aria-haspopup="true" aria-expanded="false"><span class="av">${esc((Array.from(Store.user.name || "?")[0] || "?").toUpperCase())}</span><span class="un">${esc(Store.user.name)}</span><span class="car">▾</span></button>
@@ -1442,6 +1442,16 @@
     const parts = path.split("/").filter(Boolean);
     const params = new URLSearchParams(query || "");
     stopPlayer();
+    // режим сайта: фильмы/сериалы или аниме; общие страницы (библиотека, друзья, вход) сохраняют текущий
+    const KR = (window.Kino && window.Kino.ROUTES) || [];
+    let mode = KR.includes(parts[0]) ? "kino" : ["anime", "watch", "search"].includes(parts[0]) || !parts.length ? "anime" : null;
+    if (mode) { try { localStorage.setItem("tsukimi:mode", mode); } catch (e) {} }
+    else { try { mode = localStorage.getItem("tsukimi:mode") || "anime"; } catch (e) { mode = "anime"; } }
+    document.documentElement.dataset.mode = mode;
+    $("#logo").textContent = mode === "kino" ? "Киноман" : cfg.SITE_NAME;
+    $("#logo").setAttribute("href", mode === "kino" ? "#/kino" : "#/");
+    $("#navQ").placeholder = mode === "kino" ? "Найти фильм или сериал" : "Найти аниме";
+    $$("#modeSw a").forEach((a) => a.classList.toggle("on", a.dataset.m === mode));
     drawNav();
     const TITLES = { search: "Каталог", library: "Библиотека", friends: "Друзья", login: "Вход", diag: "Диагностика" };
     setTitle(TITLES[parts[0]] || "");
@@ -1453,6 +1463,8 @@
     try {
       // вошёл через Google без кода приглашения: пускаем только на страницу ввода кода
       if (Store.user && Store.user.approved === false) pageInvite();
+      else if (parts[0] === "kino") await window.Kino.home(app);
+      else if (parts[0] === "movie" || parts[0] === "tv") window.Kino.soon(app);
       else if (!parts.length) await pageHome();
       else if (parts[0] === "search") await pageSearch(params);
       else if (parts[0] === "anime") await pageAnime(parts[1]);
