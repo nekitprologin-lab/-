@@ -106,3 +106,13 @@ html[data-device="mobile"] .filters .btn { flex: none; padding: 11px 12px; min-h
 html[data-device="mobile"] .nav-links a, html[data-device="mobile"] .nav-links button { white-space: nowrap; padding-left: 9px; padding-right: 9px; }
 html[data-device="mobile"] .nav-links { flex-wrap: nowrap; }
 html[data-device="mobile"] .actions #kPlay { flex-basis: 100%; }
+
+/* Киноман: блок «Где смотреть» */
+.kwhere { margin-top: 22px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--s1); }
+.kw-h { font: 600 13px var(--font-head, inherit); letter-spacing: .08em; text-transform: uppercase; color: var(--moon); margin-bottom: 10px; }
+.kw-g { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.kw-g > span { flex: 0 0 100%; color: var(--muted); font-size: 12.5px; }
+.kw-p { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px 5px 6px; border-radius: 999px; background: rgba(255,255,255,.07); font-weight: 500; font-size: 13.5px; }
+.kw-p img { width: 26px; height: 26px; border-radius: 7px; }
+.kw-l { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.kw-l .btn { padding: 10px 16px; font-size: 14px; }

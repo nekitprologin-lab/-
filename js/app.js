@@ -1314,6 +1314,13 @@
       probe("Worker: умный поиск (ИИ)", (sg) => fetch(wk("?ai=" + encodeURIComponent("торадора")), { signal: sg }));
       probe("Worker: плеер Kodik", (sg) => fetch(wk("?id=16498"), { signal: sg }));
     }
+    // Киноман: оба адреса шлюза, каталог и постер отдельно
+    const cfgA = window.APP_CONFIG || {};
+    [cfgA.WORKER_URL, cfgA.WORKER_FALLBACK].filter(Boolean).forEach((b) => {
+      let host = b; try { host = new URL(b).host; } catch (e) {}
+      probe("Кино: каталог через " + host, async (sg) => { const r = await fetch(b + "?tmdb=" + encodeURIComponent("/trending/all/week?language=ru-RU") + "&slim=1", { signal: sg }); await r.text(); return r; });
+      probe("Кино: постер через " + host, async (sg) => { const r = await fetch(b + "?img=/w185/lkcSRoS5FXzzNi13ug6kenL2vi2.jpg", { signal: sg }); await r.blob(); return r; });
+    });
     checks.forEach(async ([name, url], i) => {
       const t0 = performance.now();
       const ctrl = new AbortController();

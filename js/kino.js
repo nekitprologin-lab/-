@@ -264,6 +264,7 @@
           ${m.tagline ? `<div class="alt" style="margin-top:18px">«${esc(m.tagline)}»</div>` : ""}
           <p class="desc">${esc(m.overview || "Описание пока отсутствует.")}</p>
           ${cast ? `<div class="muted" style="margin-top:14px"><b>В ролях:</b> ${esc(cast)}</div>` : ""}
+          <div class="kwhere" id="kWhere"><div class="kw-h">Где смотреть</div><div class="muted">Ищу сервисы…</div></div>
         </div>
       </div>
       <div class="wrap" id="kWatch" hidden>
@@ -298,7 +299,11 @@
         let src = await getUrl();
         if (isTv) src += (src.includes("?") ? "&" : "?") + "season=" + season + "&episode=" + episode;
         box.innerHTML = `<iframe src="${esc(src)}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="origin" style="width:100%;aspect-ratio:16/9;border:0;border-radius:14px;background:#000"></iframe>`;
-      } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+      } catch (e) {
+        box.innerHTML = `<div class="empty">${esc(e.message)}<br><a class="btn primary" href="#" id="kGoWhere" style="margin-top:14px">Где смотреть</a></div>`;
+        const g = box.querySelector("#kGoWhere");
+        if (g) g.onclick = (ev) => { ev.preventDefault(); const w = app.querySelector("#kWhere"); if (w) w.scrollIntoView({ behavior: "smooth", block: "center" }); };
+      }
     }
     let curS = seasons[0] ? seasons[0].season_number : 1, curE = 1;
     async function drawEps(sn) {
@@ -311,6 +316,21 @@
         el.innerHTML = eps.map((e) => `<a class="ep ${e.episode_number === curE ? "cur" : ""}" href="#" data-e="${e.episode_number}" title="${esc(e.name || "")}">${e.episode_number}</a>`).join("");
       } catch (e) { el.innerHTML = ""; }
     }
+
+    // «Где смотреть»: легальные сервисы из TMDB (по России) и быстрый поиск по крупным кинотеатрам
+    (async () => {
+      const box = app.querySelector("#kWhere");
+      if (!box) return;
+      let prov = null;
+      try { const j = await tmdb(`/${type}/${id}/watch/providers`); prov = j.results && j.results.RU; } catch (e) {}
+      const q = encodeURIComponent(ttl);
+      const group = (name, arr) => (arr && arr.length ? `<div class="kw-g"><span>${name}</span>${arr.map((x) => `<b class="kw-p">${x.logo_path ? `<img src="${esc(img("w92", x.logo_path))}" alt="" loading="lazy">` : ""}${esc(x.provider_name)}</b>`).join("")}</div>` : "");
+      const have = prov && (prov.flatrate || []).length + (prov.rent || []).length + (prov.buy || []).length > 0;
+      const links = [["Кинопоиск", `https://www.kinopoisk.ru/index.php?kp_query=${q}`], ["ivi", `https://www.ivi.ru/search/?q=${q}`], ["Okko", `https://okko.tv/search/${q}`]];
+      box.innerHTML = `<div class="kw-h">Где смотреть</div>
+        ${have ? group("По подписке", prov.flatrate) + group("Аренда", prov.rent) + group("Покупка", prov.buy) : `<div class="muted">Точных данных по российским сервисам нет. Поищи по названию в кинотеатрах:</div>`}
+        <div class="kw-l">${prov && prov.link ? `<a class="btn primary" href="${esc(prov.link)}" target="_blank" rel="noopener">Открыть подборку</a>` : ""}${links.map(([n, u]) => `<a class="btn" href="${esc(u)}" target="_blank" rel="noopener">${n}</a>`).join("")}</div>`;
+    })();
     app.querySelector("#kPlay").onclick = () => {
       const w = app.querySelector("#kWatch"); w.hidden = false;
       w.scrollIntoView({ behavior: "smooth", block: "start" });

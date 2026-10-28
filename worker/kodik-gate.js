@@ -97,7 +97,7 @@ export default {
     const tm = new URL(request.url).searchParams.get("tmdb");
     if (tm) {
       if (!env.TMDB_KEY) return json({ error: "tmdb not configured" }, 501, headers);
-      if (!/^\/(search\/(multi|movie|tv)|(movie|tv)\/(popular|top_rated|now_playing|on_the_air|airing_today|upcoming|\d{1,9}(\/(season\/\d{1,3}|external_ids|similar|videos|recommendations))?)|trending\/(movie|tv|all)\/(day|week)|discover\/(movie|tv)|genre\/(movie|tv)\/list)(\?[\w=&,%.\-+|:]*)?$/.test(tm))
+      if (!/^\/(search\/(multi|movie|tv)|(movie|tv)\/(popular|top_rated|now_playing|on_the_air|airing_today|upcoming|\d{1,9}(\/(season\/\d{1,3}|external_ids|similar|videos|recommendations|watch\/providers))?)|trending\/(movie|tv|all)\/(day|week)|discover\/(movie|tv)|genre\/(movie|tv)\/list)(\?[\w=&,%.\-+|:]*)?$/.test(tm))
         return json({ error: "bad path" }, 400, headers);
       const sep = tm.includes("?") ? "&" : "?";
       const r = await fetch("https://api.themoviedb.org/3" + tm + sep + "api_key=" + encodeURIComponent(env.TMDB_KEY), {
@@ -278,6 +278,12 @@ function slimTmdb(j) {
   const cut = (t, n) => (t ? String(t).slice(0, n) : t);
   // описание и фон нужны только первым карточкам (обложка главной), остальным они не нужны
   const card = (m, i) => { const o = { id: m.id, media_type: m.media_type, title: m.title, name: m.name, poster_path: m.poster_path, vote_average: m.vote_average, release_date: m.release_date, first_air_date: m.first_air_date, genre_ids: m.genre_ids }; if (i < 4) { o.backdrop_path = m.backdrop_path; o.overview = cut(m.overview, 230); } return o; };
+  // где смотреть: оставляем только Россию
+  if (j.results && !Array.isArray(j.results) && typeof j.results === "object") {
+    const ru = j.results.RU || null;
+    const pr = (a) => (a || []).slice(0, 8).map((x) => ({ provider_name: x.provider_name, logo_path: x.logo_path }));
+    return { results: ru ? { RU: { link: ru.link, flatrate: pr(ru.flatrate), rent: pr(ru.rent), buy: pr(ru.buy) } } : {} };
+  }
   if (Array.isArray(j.results) && j.id === undefined) return { page: j.page, total_pages: j.total_pages, results: j.results.map(card) };
   if (Array.isArray(j.episodes)) return { episodes: j.episodes.map((e) => ({ episode_number: e.episode_number, name: e.name })) };
   if (j.id !== undefined) {
