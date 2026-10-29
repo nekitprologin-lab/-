@@ -1690,5 +1690,10 @@
   onScroll();
 
   window.addEventListener("hashchange", route);
-  Store.init().catch((e) => toast(e.message)).finally(route);
+  // Страница не должна зависеть от ответа аккаунта (Supabase): если он не отвечает 4 секунды, открываем сайт как для гостя,
+  // а когда ответ всё-таки придёт, перерисовываем страницу уже с данными пользователя
+  let routed = false;
+  const go = () => { if (!routed) { routed = true; route(); } };
+  setTimeout(go, 4000);
+  Store.init().catch((e) => { if (routed) toast("Аккаунт не отвечает: " + e.message); else toast(e.message); }).finally(() => { if (routed) { drawNav(); route(); } else go(); });
 })();

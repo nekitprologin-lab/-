@@ -6,7 +6,15 @@
   const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
   const cloud = !!(cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY && window.supabase);
   // PKCE: после входа через Google код приходит в ?code=, а не в #…, который занят адресами страниц сайта
-  const sb = cloud ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, { auth: { flowType: "pkce" } }) : null;
+  // запросы к аккаунту не должны висеть бесконечно, если Supabase закрыт провайдером: обрываем через 15 секунд
+  const tfetch = (url, opts) => {
+    opts = opts || {};
+    if (opts.signal || typeof AbortController === "undefined") return fetch(url, opts);
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 15000);
+    return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(t));
+  };
+  const sb = cloud ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, { auth: { flowType: "pkce" }, global: { fetch: tfetch } }) : null;
 
   let rows = new Map(); // anime_id -> строка библиотеки текущего пользователя
   let hist = []; // история просмотра: [{anime_id, episode, title, poster, watched_at}], новые первыми
