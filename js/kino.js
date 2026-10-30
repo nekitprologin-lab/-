@@ -85,13 +85,14 @@
   // постер из строки библиотеки: "tmdb:/abc.jpg" -> адрес через наш воркер
   const posterUrl = (r) => (r && r.poster ? (String(r.poster).startsWith("tmdb:") ? img("w342", String(r.poster).slice(5)) : r.poster) : "");
   const libHref = (r) => { const k = window.Store.kparse(r.anime_id); return `#/${k.type}/${k.id}`; };
+  const isRt = (aid) => Number(aid) >= window.Store.RT_OFF;
   function lcard(r, sub) {
     const k = window.Store.kparse(r.anime_id);
     return `<a class="card" href="#/${k.type}/${k.id}"><div class="poster">${r.poster ? `<img src="${esc(posterUrl(r))}" alt="" loading="lazy">` : ""}
       ${r.score ? `<span class="score">${(r.score / 10).toFixed(1)}</span>` : ""}${r.liked ? `<span class="heart">♥</span>` : ""}</div>
-      <div class="name">${esc(r.title)}</div><div class="sub">${esc(sub || (k.type === "tv" ? "Сериал" : "Фильм"))}</div></a>`;
+      <div class="name">${esc(r.title)}</div><div class="sub">${esc(sub || (k.type === "rtv" ? "Бесплатно" : k.type === "tv" ? "Сериал" : "Фильм"))}</div></a>`;
   }
-  const epLabel = (h) => (h.anime_id >= 2 * 10000000 ? `Сезон ${Math.floor(h.episode / 1000)}, серия ${h.episode % 1000}` : "Фильм");
+  const epLabel = (h) => (h.anime_id >= 1e15 ? "Бесплатно" : h.anime_id >= 2 * 10000000 ? `Сезон ${Math.floor(h.episode / 1000)}, серия ${h.episode % 1000}` : "Фильм");
   const kind = (m, def) => m.media_type || def;
   const title = (m) => m.title || m.name || "";
   const year = (m) => String(m.release_date || m.first_air_date || "").slice(0, 4);
@@ -117,7 +118,7 @@
       ["Лучшие сериалы", `/tv/top_rated?${L}`, "tv"],
     ];
     const sk = () => `<div class="row">${Array.from({ length: 6 }, () => `<div class="card sk"><div class="poster"></div><div class="name"></div><div class="sub"></div></div>`).join("")}</div>`;
-    app.innerHTML = `<div id="kHero"></div><div class="wrap"><div id="kMine"></div><div id="kRecs"></div><div id="kFriends"></div>${rows.map((r, i) => `<div id="kr${i}">${section(r[0], sk())}</div>`).join("")}</div>`;
+    app.innerHTML = `<div id="kHero"></div><div class="wrap"><div id="kMine"></div><div id="kRecs"></div><div id="kFriends"></div><div id="kFree"></div>${rows.map((r, i) => `<div id="kr${i}">${section(r[0], sk())}</div>`).join("")}</div>`;
     let failed = 0;
     const fail = (i, e) => {
       failed++;
@@ -151,6 +152,7 @@
     app.onclick = (e) => { const b = e.target.closest("[data-retry]"); if (b) load(+b.dataset.retry); };
     // первым грузим «В тренде» (он же даёт обложку), остальные ряды параллельно, но каждый сам по себе
     rows.forEach((_, i) => load(i));
+    freeRow(app.querySelector("#kFree"));
     personal(app);
   }
 
@@ -171,7 +173,7 @@
     }
     // рекомендации: похожее на то, что понравилось или просмотрено
     try {
-      const base = all.filter((r) => r.liked || r.status === "completed").sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1)).slice(0, 2);
+      const base = all.filter((r) => !isRt(r.anime_id) && (r.liked || r.status === "completed")).sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1)).slice(0, 2);
       const box = app.querySelector("#kRecs");
       if (box && base.length) {
         const lists = await Promise.all(base.map((r) => { const k = St.kparse(r.anime_id); return tmdb(`/${k.type}/${k.id}/recommendations?${L}`).then((j) => (j.results || []).map((x) => ({ ...x, media_type: k.type }))).catch(() => []); }));
@@ -386,7 +388,7 @@
     const st = { q: params.get("q") || "", type: params.get("type") === "tv" ? "tv" : "movie", genre: params.get("genre") || "", sort: params.get("sort") || "", year: params.get("year") || "", page: 1 };
     app.innerHTML = `<div class="wrap cat">
       <div class="cat-head"><h1>Каталог</h1><p class="muted">Фильмы и сериалы со всего мира. Ищи по названию или подбирай по жанру и году.</p></div>
-      <div class="kf-tabs" id="kfType"><button type="button" data-t="movie">Фильмы</button><button type="button" data-t="tv">Сериалы</button></div>
+      <div class="kf-tabs" id="kfType"><button type="button" data-t="movie">Фильмы</button><button type="button" data-t="tv">Сериалы</button><a href="#/rt">Бесплатно</a></div>
       <form class="filters" id="kf" autocomplete="off">
         <label class="f-search"><input type="search" name="q" placeholder="Название фильма или сериала" value="${esc(st.q)}" aria-label="Название"></label>
         <select class="select" name="sort" aria-label="Сортировка">
@@ -476,5 +478,117 @@
     }));
   }
 
-  window.Kino = { home, detail, find, suggest, library, posterUrl, libHref, ROUTES: ["kino", "movie", "tv", "kfind", "klib"] };
+  // ---------- бесплатное кино: официальные каналы студий на Rutube ----------
+  // Каталог собирает tools/rutube_sync.py (из России) и кладёт в data/rutube.json. Сайт читает файл, API Рутуба напрямую не дёргает.
+  let rtData = null;
+  async function rtLoad() {
+    if (rtData) return rtData;
+    const r = await fetch("data/rutube.json?d=" + new Date().toISOString().slice(0, 13));
+    if (!r.ok) throw new Error("empty");
+    const j = await r.json();
+    if (!j || !Array.isArray(j.items) || !j.items.length) throw new Error("empty");
+    j.byK = new Map(j.items.map((x) => [x.k, x]));
+    return (rtData = j);
+  }
+  const dur = (sec) => { const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60); return h ? `${h} ч ${m} мин` : `${m} мин`; };
+  const thumb = (x) => String(x.th || "").replace(/^http:/, "https:");
+  function rcard(x, data) {
+    const ch = (data.channels[x.ch] || {}).name || "";
+    return `<a class="card rt" href="#/rtv/${x.k}"><div class="poster">${x.th ? `<img src="${esc(thumb(x))}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ""}<span class="score">${dur(x.d)}</span></div>
+      <div class="name">${esc(x.t)}</div><div class="sub">${esc([ch, x.y || ""].filter(Boolean).join(" · "))}</div></a>`;
+  }
+  const rtEmpty = `<div class="empty">Каталог бесплатного кино ещё собирается. Загляни чуть позже.</div>`;
+
+  // ряд на главной
+  async function freeRow(box) {
+    try {
+      const d = await rtLoad();
+      const top = d.items.filter((x) => x.ty === "film").slice(0, 16);
+      if (!top.length) return;
+      box.innerHTML = `<section class="section"><div class="section-head"><h2>Бесплатное кино</h2><a class="more-link" href="#/rt">Все →</a></div>
+        <p class="muted rt-note">Фильмы и мультфильмы с официальных каналов студий. Смотреть можно сразу, без регистрации.</p>
+        <div class="row rt-row">${top.map((x) => rcard(x, d)).join("")}</div></section>`;
+    } catch (e) {}
+  }
+
+  async function free(app, params) {
+    const st = { q: params.get("q") || "", ty: params.get("ty") || "", sort: params.get("sort") || "", n: 48 };
+    app.innerHTML = `<div class="wrap cat">
+      <div class="cat-head"><h1>Бесплатное кино</h1><p class="muted">Фильмы и мультфильмы с официальных каналов студий: Мосфильм, Ленфильм, Союзмультфильм и других. Без рекламы от нас и без регистрации.</p></div>
+      <div class="kf-tabs" id="rtTy"><button type="button" data-t="">Все</button><button type="button" data-t="film">Фильмы</button><button type="button" data-t="cartoon">Мультфильмы</button></div>
+      <form class="filters" id="rtF" autocomplete="off">
+        <label class="f-search"><input type="search" name="q" placeholder="Название" value="${esc(st.q)}" aria-label="Название"></label>
+        <select class="select" name="sort" aria-label="Сортировка"><option value="">Популярные</option><option value="new">Новые по году</option><option value="long">Длинные</option></select>
+      </form>
+      <div id="rtRes"><div class="loading">Загружаю каталог…</div></div></div>`;
+    const res = app.querySelector("#rtRes"), input = app.querySelector("input[name=q]"), sel = app.querySelector("select[name=sort]");
+    sel.value = st.sort;
+    let d;
+    try { d = await rtLoad(); } catch (e) { res.innerHTML = rtEmpty; return; }
+    const draw = () => {
+      app.querySelectorAll("#rtTy button").forEach((b) => b.classList.toggle("on", b.dataset.t === st.ty));
+      const q = st.q.toLowerCase();
+      let list = d.items.filter((x) => (!st.ty || x.ty === st.ty) && (!q || x.t.toLowerCase().includes(q)));
+      if (st.sort === "new") list = [...list].sort((a, b) => b.y - a.y || b.h - a.h);
+      else if (st.sort === "long") list = [...list].sort((a, b) => b.d - a.d);
+      if (!list.length) { res.innerHTML = `<div class="empty">Ничего не нашлось. Попробуй часть названия.</div>`; return; }
+      res.innerHTML = `<div class="grid rt-grid">${list.slice(0, st.n).map((x) => rcard(x, d)).join("")}</div>${list.length > st.n ? `<button class="btn more" type="button">Показать ещё</button>` : ""}`;
+      const more = res.querySelector(".more");
+      if (more) more.onclick = () => { st.n += 48; draw(); };
+    };
+    const sync = () => {
+      const p = new URLSearchParams();
+      Object.entries({ q: st.q, ty: st.ty, sort: st.sort }).forEach(([k, v]) => v && p.set(k, v));
+      history.replaceState(null, "", "#/rt" + (p.toString() ? "?" + p : ""));
+    };
+    let timer;
+    app.querySelector("#rtF").onsubmit = (e) => e.preventDefault();
+    input.addEventListener("input", () => { st.q = input.value.trim(); st.n = 48; sync(); clearTimeout(timer); timer = setTimeout(draw, 200); });
+    sel.onchange = () => { st.sort = sel.value; st.n = 48; sync(); draw(); };
+    app.querySelector("#rtTy").onclick = (e) => { const b = e.target.closest("[data-t]"); if (!b) return; st.ty = b.dataset.t; st.n = 48; sync(); draw(); };
+    draw();
+  }
+
+  async function freeWatch(app, k) {
+    const St = window.Store;
+    app.innerHTML = `<div class="wrap"><div class="loading">Загружаю…</div></div>`;
+    let d, x;
+    try { d = await rtLoad(); x = d.byK.get(Number(k)); } catch (e) { app.innerHTML = `<div class="wrap">${rtEmpty}</div>`; return; }
+    if (!x) { app.innerHTML = `<div class="wrap"><div class="empty">Этого видео нет в каталоге.<br><a class="btn primary" href="#/rt" style="margin-top:14px">К каталогу</a></div></div>`; return; }
+    const aid = St.RT_OFF + x.k;
+    const item = { aid, type: "rtv", id: x.k, title: x.t, poster_url: thumb(x) };
+    const ch = (d.channels[x.ch] || {}).name || "";
+    const lib = St.get(aid) || {};
+    const similar = d.items.filter((y) => y.k !== x.k && y.ch === x.ch).slice(0, 14);
+    app.innerHTML = `<div class="wrap rt-watch">
+      <a class="back muted" href="#/rt">← Бесплатное кино</a>
+      <div class="player-wrap kino-player"><iframe src="https://rutube.ru/play/embed/${esc(x.id)}" allow="clipboard-write; autoplay; fullscreen" allowfullscreen frameborder="0" title="${esc(x.t)}"></iframe></div>
+      <h1 class="rt-title">${esc(x.t)}</h1>
+      <div class="meta"><span>${esc(ch)}</span>${x.y ? `<span>${x.y}</span>` : ""}<span>${dur(x.d)}</span><span>${x.ty === "cartoon" ? "Мультфильм" : "Фильм"}</span></div>
+      <div class="actions">
+        <button type="button" class="btn ${lib.liked ? "liked" : ""}" id="rtLike">${lib.liked ? "♥ Нравится" : "♡ Нравится"}</button>
+        <select class="select" id="rtStatus" aria-label="Статус"><option value="">Не в списке</option>${Object.entries(KSTATUS).map(([a, v]) => `<option value="${a}" ${lib.status === a ? "selected" : ""}>${v}</option>`).join("")}</select>
+        <a class="btn" href="https://rutube.ru/video/${esc(x.id)}/" target="_blank" rel="noopener">Открыть на Rutube</a>
+      </div>
+      <p class="muted rt-note">Видео размещено на официальном канале «${esc(ch)}» на Rutube и показывается через его плеер.</p>
+      ${similar.length ? section("Ещё с этого канала", `<div class="row rt-row">${similar.map((y) => rcard(y, d)).join("")}</div>`) : ""}</div>`;
+    if (St.user) {
+      St.addHistoryKino(item, 1, 1).catch(() => {});
+      if (!lib.status) St.saveKino(item, { status: "watching" }).then(() => { const s = app.querySelector("#rtStatus"); if (s) s.value = "watching"; }).catch(() => {});
+    }
+    const needLogin = () => { window.toast && window.toast("Сначала войди"); location.hash = "#/login"; };
+    app.querySelector("#rtLike").onclick = async (e) => {
+      if (!St.user) return needLogin();
+      const liked = !(St.get(aid) || {}).liked, b = e.currentTarget;
+      await St.saveKino(item, { liked }).catch((er) => window.toast && window.toast(er.message));
+      b.className = "btn" + (liked ? " liked" : ""); b.textContent = liked ? "♥ Нравится" : "♡ Нравится";
+    };
+    app.querySelector("#rtStatus").onchange = async (e) => {
+      if (!St.user) { e.target.value = ""; return needLogin(); }
+      await St.saveKino(item, { status: e.target.value || null }).catch((er) => window.toast && window.toast(er.message));
+      window.toast && window.toast("Сохранено");
+    };
+  }
+
+  window.Kino = { home, detail, find, suggest, library, free, freeWatch, posterUrl, libHref, ROUTES: ["kino", "movie", "tv", "kfind", "klib", "rt", "rtv"] };
 })();

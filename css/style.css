@@ -914,6 +914,8 @@ html[data-mode="kino"] .chip.on, html[data-mode="kino"] .ep.cur, html[data-mode=
 /* Киноман: вкладки «Фильмы / Сериалы» в каталоге */
 .kf-tabs { display: inline-flex; gap: 4px; padding: 4px; margin-top: 18px; background: var(--s1); border: 1px solid var(--line); border-radius: 999px; }
 .kf-tabs button { padding: 9px 22px; border-radius: 999px; border: 0; background: none; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer; transition: background .25s, color .25s; }
+.kf-tabs a { padding: 9px 22px; border-radius: 999px; color: var(--moon); font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
 .kf-tabs button.on { background: var(--moon); color: var(--moon-ink, #0a0a0a); }
 html[data-device="mobile"] .kf-tabs { display: flex; margin-top: 14px; }
+html[data-device="mobile"] .kf-tabs a { flex: 1; padding: 0 8px; min-height: 42px; }
 html[data-device="mobile"] .kf-tabs button { flex: 1; min-height: 42px; }

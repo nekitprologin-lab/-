@@ -1463,7 +1463,7 @@
     $("#navQ").placeholder = mode === "kino" ? "Найти фильм или сериал" : "Найти аниме";
     $$("#modeSw a").forEach((a) => a.classList.toggle("on", a.dataset.m === mode));
     drawNav();
-    const TITLES = { search: "Каталог", kfind: "Каталог фильмов", klib: "Моё кино", library: "Библиотека", friends: "Друзья", login: "Вход", diag: "Диагностика" };
+    const TITLES = { search: "Каталог", kfind: "Каталог фильмов", klib: "Моё кино", rt: "Бесплатное кино", rtv: "Бесплатное кино", library: "Библиотека", friends: "Друзья", login: "Вход", diag: "Диагностика" };
     setTitle(TITLES[parts[0]] || "");
     window.scrollTo(0, 0);
     // плавное появление новой страницы (только при смене адреса, не при перерисовке)
@@ -1476,6 +1476,8 @@
       else if (parts[0] === "kino") await window.Kino.home(app);
       else if (parts[0] === "kfind") await window.Kino.find(app, params);
       else if (parts[0] === "klib") window.Kino.library(app, params);
+      else if (parts[0] === "rt") await window.Kino.free(app, params);
+      else if (parts[0] === "rtv") await window.Kino.freeWatch(app, parts[1]);
       else if (parts[0] === "movie" || parts[0] === "tv") await window.Kino.detail(app, parts[0], parts[1]);
       else if (!parts.length) await pageHome();
       else if (parts[0] === "search") await pageSearch(params);
