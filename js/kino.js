@@ -171,15 +171,24 @@
       if (planned.length) html += section("В планах", `<div class="row">${planned.slice(0, 14).map((r) => lcard(r)).join("")}</div>`);
       mine.outerHTML = html;
     }
-    // рекомендации: похожее на то, что понравилось или просмотрено
+    // рекомендации: берём до 6 любимых/просмотренных, тянем «рекомендации» и «похожее», считаем, сколько раз тайтл встретился,
+    // добавляем бонус за оценку и число голосов, уже виденное и брошенное убираем
     try {
-      const base = all.filter((r) => !isRt(r.anime_id) && (r.liked || r.status === "completed")).sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1)).slice(0, 2);
+      const base = all.filter((r) => !isRt(r.anime_id) && (r.liked || r.status === "completed")).sort((a, b) => ((b.liked ? 1 : 0) - (a.liked ? 1 : 0)) || (b.updated_at > a.updated_at ? 1 : -1)).slice(0, 6);
       const box = app.querySelector("#kRecs");
       if (box && base.length) {
-        const lists = await Promise.all(base.map((r) => { const k = St.kparse(r.anime_id); return tmdb(`/${k.type}/${k.id}/recommendations?${L}`).then((j) => (j.results || []).map((x) => ({ ...x, media_type: k.type }))).catch(() => []); }));
-        const have = new Set(all.map((r) => r.anime_id));
-        const seen = new Set(), out = [];
-        for (let i = 0; out.length < 18 && i < 20; i++) lists.forEach((l) => { const x = l[i]; if (x && x.poster_path && !seen.has(x.media_type + x.id) && !have.has(St.kid(x.media_type, x.id))) { seen.add(x.media_type + x.id); out.push(x); } });
+        const lists = await Promise.all(base.map((r) => { const k = St.kparse(r.anime_id);
+          return Promise.all([tmdb(`/${k.type}/${k.id}/recommendations?${L}`).catch(() => ({})), tmdb(`/${k.type}/${k.id}/similar?${L}`).catch(() => ({}))])
+            .then(([a, b]) => [...(a.results || []).slice(0, 14), ...(b.results || []).slice(0, 8)].map((x) => ({ ...x, media_type: k.type, w: r.liked ? 2 : 1 }))); }));
+        const skip = new Set(all.filter((r) => r.status || r.liked).map((r) => r.anime_id));
+        const map = new Map();
+        lists.flat().forEach((x) => {
+          if (!x.poster_path || skip.has(St.kid(x.media_type, x.id))) return;
+          const key = x.media_type + x.id, e = map.get(key) || { x, sc: 0 };
+          e.sc += x.w * 3; map.set(key, e);
+        });
+        const out = [...map.values()].map((e) => { e.sc += (e.x.vote_average || 0) / 2 + Math.min((e.x.vote_count || 0) / 2000, 1); return e; })
+          .sort((a, b) => b.sc - a.sc).slice(0, 18).map((e) => e.x);
         if (out.length) box.outerHTML = section("Рекомендуем тебе", rowOf(out, "movie"));
       }
     } catch (e) {}
@@ -302,7 +311,7 @@
         if (isTv) src += (src.includes("?") ? "&" : "?") + "season=" + season + "&episode=" + episode;
         box.innerHTML = `<iframe src="${esc(src)}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="origin" style="width:100%;aspect-ratio:16/9;border:0;border-radius:14px;background:#000"></iframe>`;
       } catch (e) {
-        box.innerHTML = `<div class="empty">${esc(e.message)}<br><a class="btn primary" href="#" id="kGoWhere" style="margin-top:14px">Где смотреть</a></div>`;
+        box.innerHTML = `<div class="empty">${esc(e.message)}<br><div class="actions" style="justify-content:center;margin-top:14px"><a class="btn primary" href="#" id="kGoWhere">Где смотреть</a><a class="btn" href="#/rt?q=${encodeURIComponent(title(m))}">Искать в бесплатном кино</a></div></div>`;
         const g = box.querySelector("#kGoWhere");
         if (g) g.onclick = (ev) => { ev.preventDefault(); const w = app.querySelector("#kWhere"); if (w) w.scrollIntoView({ behavior: "smooth", block: "center" }); };
       }
@@ -519,6 +528,7 @@
       <form class="filters" id="rtF" autocomplete="off">
         <label class="f-search"><input type="search" name="q" placeholder="Название" value="${esc(st.q)}" aria-label="Название"></label>
         <select class="select" name="sort" aria-label="Сортировка"><option value="">Популярные</option><option value="new">Новые по году</option><option value="long">Длинные</option></select>
+        <button class="btn" type="button" id="rtRnd">🎲 Случайное</button>
       </form>
       <div id="rtRes"><div class="loading">Загружаю каталог…</div></div></div>`;
     const res = app.querySelector("#rtRes"), input = app.querySelector("input[name=q]"), sel = app.querySelector("select[name=sort]");
@@ -546,6 +556,10 @@
     input.addEventListener("input", () => { st.q = input.value.trim(); st.n = 48; sync(); clearTimeout(timer); timer = setTimeout(draw, 200); });
     sel.onchange = () => { st.sort = sel.value; st.n = 48; sync(); draw(); };
     app.querySelector("#rtTy").onclick = (e) => { const b = e.target.closest("[data-t]"); if (!b) return; st.ty = b.dataset.t; st.n = 48; sync(); draw(); };
+    app.querySelector("#rtRnd").onclick = () => {
+      const l = d.items.filter((x) => (!st.ty || x.ty === st.ty) && x.h > 0), top = l.slice(0, Math.max(30, Math.floor(l.length / 2)));
+      if (top.length) location.hash = "#/rtv/" + top[Math.floor(Math.random() * top.length)].k;
+    };
     draw();
   }
 
@@ -570,7 +584,7 @@
         <select class="select" id="rtStatus" aria-label="Статус"><option value="">Не в списке</option>${Object.entries(KSTATUS).map(([a, v]) => `<option value="${a}" ${lib.status === a ? "selected" : ""}>${v}</option>`).join("")}</select>
         <a class="btn" href="https://rutube.ru/video/${esc(x.id)}/" target="_blank" rel="noopener">Открыть на Rutube</a>
       </div>
-      <p class="muted rt-note">Видео размещено на официальном канале «${esc(ch)}» на Rutube и показывается через его плеер.</p>
+      <p class="muted rt-note">Если видео не открывается, отключи VPN: Rutube показывает видео только из России. Видео размещено на официальном канале «${esc(ch)}» на Rutube и показывается через его плеер.</p>
       ${similar.length ? section("Ещё с этого канала", `<div class="row rt-row">${similar.map((y) => rcard(y, d)).join("")}</div>`) : ""}</div>`;
     if (St.user) {
       St.addHistoryKino(item, 1, 1).catch(() => {});
